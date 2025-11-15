@@ -43,7 +43,6 @@ unlock-database.php
 update-schema.php
 update-themes-advanced-css.php
 update-themes-with-animations.php
-update-version.php
 api/test.php
 ```
 
@@ -164,9 +163,18 @@ You can download `/data/app.sqlite` through DreamHost file manager
 
 ### Updating the App
 When you update code:
-1. Download current `/data/app.sqlite` (backup!)
-2. Upload new files
-3. Put back the `/data/` folder with your database
+1. **Download current `/data/app.sqlite`** (backup!)
+2. **Upload new files** via DreamHost file manager
+3. **⚠️ CRITICAL: Update version**
+   - Visit `https://yourdomain.com/update-version.php`
+   - Enter password (default: `changeme123` - change this!)
+   - This forces browsers to download fresh code
+4. **Put back the `/data/` folder** with your database if needed
+5. **Test** the app to verify changes loaded
+
+**Why update version?** Without it, users see old cached files and won't get your updates!
+
+See `VERSION_UPDATER.md` for detailed instructions.
 
 ## Security Best Practices
 

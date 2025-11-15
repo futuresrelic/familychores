@@ -43,7 +43,6 @@ unlock-database.php
 update-schema.php
 update-themes-advanced-css.php
 update-themes-with-animations.php
-update-version.php
 
 Delete from the /api/ directory:
 ---------------------------------

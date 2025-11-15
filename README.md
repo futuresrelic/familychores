@@ -226,11 +226,23 @@ All API calls go through `/api/api.php` with JSON payloads.
 Download `/data/app.sqlite` regularly via DreamHost file manager.
 Keep backups in a safe location.
 
-### Updating
-1. Backup database
-2. Upload new code files
-3. Restore database to `/data/` folder
-4. Clear browser cache on all devices
+### Updating Code (IMPORTANT!)
+When you upload new files to your server, you MUST update the version number so users get the latest code:
+
+1. **Backup database** (download `/data/app.sqlite`)
+2. **Upload new code files** via DreamHost file manager
+3. **Update version**: Visit `https://yourdomain.com/update-version.php`
+   - Enter password (default: `changeme123` - CHANGE THIS!)
+   - This will bump the version number automatically
+   - All users will get fresh CSS/JS files
+4. **Test**: Open Admin and Kid panels to verify changes loaded
+
+**Why this matters**: Without updating the version, users will see old cached files and won't get your updates!
+
+#### Change Version Updater Password
+1. Edit `update-version.php` on line 12
+2. Change `$UPDATE_PASSWORD = 'changeme123';` to your own password
+3. Save and upload
 
 ### Database Maintenance
 The app automatically:

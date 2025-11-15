@@ -43,7 +43,6 @@ setup-new-family.php
 setup-themes-table.php
 update-schema.php
 update-themes*.php
-update-version.php
 find-missing-breaks.php
 generate-icons*.php
 syntax-check.php
