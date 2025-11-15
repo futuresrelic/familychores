@@ -361,9 +361,8 @@ function renderChores(chores, submissions = []) {
                 submitChore(chore.chore_id, chore.title);
             };
             
-            button.addEventListener('click', handleSubmit);
-            button.addEventListener('touchend', handleSubmit);
-            button.onclick = handleSubmit;
+            button.addEventListener('click', handleSubmit, { once: true });
+            button.addEventListener('touchend', handleSubmit, { once: true });
         }
     });
 }
@@ -531,9 +530,8 @@ async function viewQuestTasks(questId, questTitle) {
             submitQuestTask(taskId, taskTitle);
         };
         
-        btn.addEventListener('click', handleSubmit);
-        btn.addEventListener('touchend', handleSubmit);
-        btn.onclick = handleSubmit;
+        btn.addEventListener('click', handleSubmit, { once: true });
+        btn.addEventListener('touchend', handleSubmit, { once: true });
     });
     
     // Close button
@@ -544,9 +542,8 @@ async function viewQuestTasks(questId, questTitle) {
             modal.remove();
         };
         
-        closeBtn.addEventListener('click', handleClose);
-        closeBtn.addEventListener('touchend', handleClose);
-        closeBtn.onclick = handleClose;
+        closeBtn.addEventListener('click', handleClose, { once: true });
+        closeBtn.addEventListener('touchend', handleClose, { once: true });
     }
     
     // Close on backdrop
@@ -1189,7 +1186,7 @@ function saveSettings() {
                 }
                 
                 // Call the animation function directly based on type
-            switch(theme.animationType) {
+            switch(selectedTheme.animationType) {
                 case 'stars':
                     if (typeof createStarryBackground === 'function') {
                         createStarryBackground();
