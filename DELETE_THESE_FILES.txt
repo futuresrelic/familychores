@@ -1,0 +1,62 @@
+===============================================
+⚠️  DELETE THESE FILES BEFORE PRODUCTION ⚠️
+===============================================
+
+These debug/test files MUST be deleted before uploading to DreamHost!
+They could expose sensitive information or allow unauthorized access.
+
+Delete these files from the ROOT directory:
+--------------------------------------------
+api-debug.php
+backup-db.php
+check-endpoints.php
+check-errors.php
+check-syntax.php
+check-users-table.php
+cleanup-test-data.php
+debug-redemptions.php
+diagnose-admin-error.php
+diagnose-completion.php
+diagnose-list-chores.php
+direct-api-test.php
+direct-test-install.php
+direct-test.php
+find-missing-breaks.php
+fix-chore-availability.php
+fix-everything.php
+fix-rewards-now.php
+fix-rewards-schema.php
+generate-icons.php
+generate-icons-from-png.php
+reset-game-scores.php
+setup-new-family.php
+setup-themes-table.php
+syntax-check.php
+test-api-call.php
+test-api-login.php
+test-complete.php
+test-game-db.php
+test-presets-api.php
+test-session.php
+test-wizard-api.php
+unlock-database.php
+update-schema.php
+update-themes-advanced-css.php
+update-themes-with-animations.php
+update-version.php
+
+Delete from the /api/ directory:
+---------------------------------
+api/test.php
+
+Also delete this file after reading:
+-------------------------------------
+DELETE_THESE_FILES.txt (this file)
+
+===============================================
+
+IMPORTANT: After deleting these files, commit
+your changes to GitHub so you have a clean
+version to download for production deployment.
+
+===============================================
