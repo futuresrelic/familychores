@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Fix Apache MPM conflict - disable all MPMs except prefork
+RUN a2dismod mpm_event mpm_worker && a2enmod mpm_prefork
+
 # Enable Apache modules
 RUN a2enmod rewrite headers expires
 
