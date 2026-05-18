@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+_docs/
+VERSION_UPDATER.md
+DEPLOYMENT_CHECKLIST.md
+
+# Development/debug files (these should be deleted anyway)
+api-debug.php
+test-*.php
+diagnose-*.php
+fix-*.php
+check-*.php
+direct-*.php
+debug-*.php
+backup-db.php
+cleanup-test-data.php
+find-missing-breaks.php
+reset-game-scores.php
+setup-new-family.php
+setup-themes-table.php
+syntax-check.php
+unlock-database.php
+update-schema.php
+update-themes-*.php
+generate-icons*.php
+
+# Railway
+.railway
+railway.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

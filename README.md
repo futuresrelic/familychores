@@ -67,14 +67,41 @@ familychores/
 └── chore-presets.json # Preset chore templates
 ```
 
-## Installation (DreamHost)
+## 🚀 Deployment
 
-### Prerequisites
-- DreamHost shared hosting account
+### Recommended: Railway (Easiest!)
+
+**Deploy in 10 minutes with automatic updates and zero maintenance:**
+
+📖 **See [QUICK_START.md](QUICK_START.md)** for the fastest deployment guide  
+📚 **See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md)** for detailed instructions
+
+**Quick steps:**
+1. Push to GitHub
+2. Connect to Railway
+3. Deploy with one click
+4. Get a free HTTPS URL
+
+**Benefits:**
+- ✅ Free tier available (perfect for families)
+- ✅ Automatic SSL/HTTPS
+- ✅ Auto-deploy on git push
+- ✅ Built-in logging and monitoring
+- ✅ Zero downtime updates
+- ✅ No manual file uploads
+
+---
+
+### Alternative: DreamHost / Manual Hosting
+
+If you prefer traditional shared hosting:
+
+#### Prerequisites
+- DreamHost shared hosting account (or similar)
 - PHP 7.4 or higher
 - Web-accessible directory
 
-### Deployment Steps
+#### Deployment Steps
 
 1. **Clean Up Development Files**
    - See `DELETE_THESE_FILES.txt` for files to remove
