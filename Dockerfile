@@ -10,8 +10,10 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Fix Apache MPM conflict - disable all MPMs except prefork
-RUN a2dismod mpm_event mpm_worker && a2enmod mpm_prefork
+# Fix Apache MPM conflict - completely remove conflicting modules
+RUN rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-enabled/mpm_worker.* \
+    && rm -f /etc/apache2/mods-available/mpm_event.* /etc/apache2/mods-available/mpm_worker.* \
+    && a2enmod mpm_prefork
 
 # Enable Apache modules
 RUN a2enmod rewrite headers expires
@@ -30,6 +32,9 @@ WORKDIR /var/www/html
 # Copy application files
 COPY . /var/www/html/
 
+# Make entrypoint script executable
+RUN chmod +x /var/www/html/docker-entrypoint.sh
+
 # Create necessary directories with proper permissions
 # Railway will persist /var/www/html/data automatically
 RUN mkdir -p /var/www/html/data/sessions && \
@@ -47,5 +52,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost/ || exit 1
 
-# Start Apache in foreground
-CMD ["apache2-foreground"]
+# Use custom entrypoint for better startup
+ENTRYPOINT ["/var/www/html/docker-entrypoint.sh"]
