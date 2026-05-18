@@ -45,8 +45,9 @@ RUN mkdir -p /var/www/html/data/sessions && \
 # Configure Apache ServerName to avoid warnings
 RUN echo "ServerName familychores" >> /etc/apache2/apache2.conf
 
-# Expose port 80 (Railway will map this to HTTPS automatically)
+# Expose port (Railway provides PORT env var)
 EXPOSE 80
+ENV PORT=80
 
 # Health check - verifies Apache and PHP are working
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
