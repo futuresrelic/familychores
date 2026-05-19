@@ -112,6 +112,9 @@ async function loadTabData(tabName) {
         case 'redemptions':
             await loadRedemptions('pending');
             break;
+        case 'families':
+            await loadFamilies();
+            break;
         case 'setup-wizard':
             loadWizard();
             break;
@@ -827,10 +830,16 @@ async function reviewSubmission(submissionId, status, choreId = null) {
     }
 }
 
+// Quest title map — avoids apostrophe/special-char issues in onclick attributes
+window._questTitles = {};
+
 // Quests
 async function loadQuests() {
     const result = await apiCall('list_quests');
     if (result.ok) {
+        window._questTitles = {};
+        result.data.forEach(q => { window._questTitles[q.id] = q.title; });
+
         const html = result.data.map(quest => `
             <div class="list-item">
                 <div class="list-item-info">
@@ -839,7 +848,7 @@ async function loadQuests() {
                     <p>Reward: ${quest.target_reward} • ${quest.task_count} task(s) • ${quest.is_active ? '✅ Active' : '❌ Inactive'}</p>
                 </div>
                 <div class="list-item-actions">
-                    <button class="secondary-btn small-btn" onclick="viewQuestTasks(${quest.id}, '${quest.title}')">Tasks</button>
+                    <button class="secondary-btn small-btn" onclick="viewQuestTasks(${quest.id})">Tasks</button>
                     <button class="secondary-btn small-btn" onclick="toggleQuest(${quest.id})">${quest.is_active ? 'Deactivate' : 'Activate'}</button>
                 </div>
             </div>
@@ -888,7 +897,8 @@ async function toggleQuest(questId) {
     }
 }
 
-async function viewQuestTasks(questId, questTitle) {
+async function viewQuestTasks(questId) {
+    const questTitle = window._questTitles[questId] || 'Quest';
     const result = await apiCall('list_quest_tasks', { quest_id: questId });
     if (result.ok) {
         const html = result.data.map((task, index) => `
@@ -899,17 +909,17 @@ async function viewQuestTasks(questId, questTitle) {
                     <p>${task.points} points</p>
                 </div>
                 <div class="list-item-actions">
-                    <button class="danger-btn small-btn" onclick="deleteQuestTask(${task.id}, ${questId}, '${questTitle}')">Delete</button>
+                    <button class="danger-btn small-btn" onclick="deleteQuestTask(${task.id}, ${questId})">Delete</button>
                 </div>
             </div>
         `).join('');
-        
+
         openModal(`
             <h3>${questTitle} - Tasks</h3>
             <div class="list-container">
                 ${html || '<p>No tasks yet</p>'}
             </div>
-            <button class="primary-btn" onclick="addQuestTask(${questId}, '${questTitle}')" style="width: 100%; margin-top: 15px;">Add Task</button>
+            <button class="primary-btn" onclick="addQuestTask(${questId})" style="width: 100%; margin-top: 15px;">Add Task</button>
             <div class="modal-actions">
                 <button class="secondary-btn" onclick="closeModal()">Close</button>
             </div>
@@ -917,49 +927,50 @@ async function viewQuestTasks(questId, questTitle) {
     }
 }
 
-function addQuestTask(questId, questTitle) {
+function addQuestTask(questId) {
+    const questTitle = window._questTitles[questId] || 'Quest';
     openModal(`
         <h3>Add Task to "${questTitle}"</h3>
         <input type="text" id="task-title" placeholder="Task Title" required>
         <textarea id="task-description" placeholder="Description"></textarea>
         <input type="number" id="task-points" placeholder="Points" value="10" min="1">
         <div class="modal-actions">
-            <button class="secondary-btn" onclick="viewQuestTasks(${questId}, '${questTitle}')">Back</button>
-            <button class="primary-btn" onclick="submitQuestTask(${questId}, '${questTitle}')">Add Task</button>
+            <button class="secondary-btn" onclick="viewQuestTasks(${questId})">Back</button>
+            <button class="primary-btn" onclick="submitQuestTask(${questId})">Add Task</button>
         </div>
     `);
 }
 
-async function submitQuestTask(questId, questTitle) {
+async function submitQuestTask(questId) {
     const title = document.getElementById('task-title').value.trim();
     const description = document.getElementById('task-description').value.trim();
     const points = parseInt(document.getElementById('task-points').value);
-    
+
     if (!title) {
         showError('Title is required');
         return;
     }
-    
+
     const result = await apiCall('create_quest_task', {
         quest_id: questId,
         title,
         description,
         points
     });
-    
+
     if (result.ok) {
-        viewQuestTasks(questId, questTitle);
+        viewQuestTasks(questId);
     } else {
         showError(result.error);
     }
 }
 
-async function deleteQuestTask(taskId, questId, questTitle) {
+async function deleteQuestTask(taskId, questId) {
     if (!confirm('Delete this task?')) return;
-    
+
     const result = await apiCall('delete_quest_task', { task_id: taskId });
     if (result.ok) {
-        viewQuestTasks(questId, questTitle);
+        viewQuestTasks(questId);
     } else {
         showError(result.error);
     }
@@ -1568,6 +1579,56 @@ async function reviewRedemption(redemptionId, status) {
     }
 }
 
+// Family Groups
+async function loadFamilies() {
+    const container = document.getElementById('families-list');
+    if (!container) return;
+
+    // For now, show the current family (single-family mode)
+    // Multi-family / SaaS support is planned for a future phase
+    const kidsResult = await apiCall('list_kids');
+    const kids = kidsResult.ok ? kidsResult.data : [];
+
+    container.innerHTML = `
+        <div class="list-item" style="border-left: 4px solid #4f46e5;">
+            <div class="list-item-info">
+                <h4>Your Family</h4>
+                <p>${kids.length} kid(s) registered &nbsp;•&nbsp; Admin: ${document.getElementById('admin-email')?.textContent || 'you'}</p>
+                <p style="color:#6B7280; font-size:13px; margin-top:4px;">
+                    Kids: ${kids.map(k => k.kid_name || k.name).join(', ') || '—'}
+                </p>
+            </div>
+        </div>
+        <div style="margin-top:20px; padding:16px; background:#f0f9ff; border-radius:10px; border:1px solid #bae6fd;">
+            <strong>🚀 Multi-Family Support</strong>
+            <p style="margin-top:8px; color:#0369a1; font-size:14px;">
+                Inviting other families, group management, and Google Sign-In are planned for a future phase.
+                Each family admin would register independently and manage their own kids, chores, and rewards.
+            </p>
+        </div>
+    `;
+}
+
+function showAddFamilyModal() {
+    openModal(`
+        <h3>🏠 Add Another Family</h3>
+        <p style="color:#6B7280; margin-bottom:16px;">
+            Multi-family support is coming in a future update. Each family will be able to sign up
+            independently using Google or email, and manage their own kids, chores, and rewards.
+        </p>
+        <div style="background:#f0f9ff; padding:12px; border-radius:8px; margin-bottom:16px;">
+            <strong>Planned features:</strong><br>
+            • Google Sign-In for easy onboarding<br>
+            • Family admin invites family members<br>
+            • Isolated data per family<br>
+            • Shared chore template library
+        </div>
+        <div class="modal-actions">
+            <button class="primary-btn" onclick="closeModal()">Got it!</button>
+        </div>
+    `);
+}
+
 // Admin Management
 async function loadAdmins() {
     const result = await apiCall('list_admins');
@@ -1679,7 +1740,7 @@ async function loadWizard() {
             label.className = 'kid-option';
             label.innerHTML = `
                 <input type="radio" name="wizard-kid" value="${kid.id}">
-                <span>${kid.name || 'Kid #' + kid.id}</span>
+                <span>${kid.kid_name || kid.name || 'Kid #' + kid.id}</span>
             `;
             container.appendChild(label);
         });

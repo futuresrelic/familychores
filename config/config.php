@@ -28,8 +28,13 @@ if (!file_exists(DB_PATH)) {
 function runMigrations($db) {
     // Add missing columns to users table
     $cols = array_column($db->query("PRAGMA table_info(users)")->fetchAll(PDO::FETCH_ASSOC), 'name');
-    if (!in_array('settings', $cols))      $db->exec("ALTER TABLE users ADD COLUMN settings TEXT");
-    if (!in_array('avatar_photo', $cols))  $db->exec("ALTER TABLE users ADD COLUMN avatar_photo BLOB");
+    if (!in_array('settings', $cols))         $db->exec("ALTER TABLE users ADD COLUMN settings TEXT");
+    if (!in_array('avatar_photo', $cols))     $db->exec("ALTER TABLE users ADD COLUMN avatar_photo BLOB");
+    if (!in_array('is_test_account', $cols))  $db->exec("ALTER TABLE users ADD COLUMN is_test_account INTEGER DEFAULT 0");
+
+    // Add missing columns to rewards table
+    $rewCols = array_column($db->query("PRAGMA table_info(rewards)")->fetchAll(PDO::FETCH_ASSOC), 'name');
+    if (!in_array('created_by', $rewCols))    $db->exec("ALTER TABLE rewards ADD COLUMN created_by INTEGER");
 
     // Migrate chores table: add recurrence_type if it only has the old is_recurring/frequency columns
     $choreCols = array_column($db->query("PRAGMA table_info(chores)")->fetchAll(PDO::FETCH_ASSOC), 'name');

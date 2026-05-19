@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     total_points INTEGER DEFAULT 0,
     settings TEXT,
     avatar_photo BLOB,
+    is_test_account INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -120,6 +121,7 @@ CREATE TABLE IF NOT EXISTS rewards (
     description TEXT,
     cost_points INTEGER DEFAULT 100,
     is_active INTEGER DEFAULT 1,
+    created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
