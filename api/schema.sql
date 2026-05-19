@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL CHECK(role IN ('admin', 'kid')),
     kid_name TEXT,
     total_points INTEGER DEFAULT 0,
+    settings TEXT,
+    avatar_photo BLOB,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -26,8 +28,7 @@ CREATE TABLE IF NOT EXISTS chores (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     description TEXT,
-    is_recurring INTEGER DEFAULT 1,
-    frequency TEXT DEFAULT 'daily' CHECK(frequency IN ('daily', 'weekly', 'once')),
+    recurrence_type TEXT NOT NULL DEFAULT 'daily' CHECK(recurrence_type IN ('once', 'daily', 'weekly', 'monthly')),
     default_points INTEGER DEFAULT 10,
     requires_approval INTEGER DEFAULT 1,
     created_by INTEGER,
@@ -156,20 +157,59 @@ CREATE TABLE IF NOT EXISTS rate_limits (
     UNIQUE(ip_address, action)
 );
 
+-- Themes table (full schema including CSS and animation columns)
+CREATE TABLE IF NOT EXISTS themes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    bg_color TEXT DEFAULT '#4F46E5',
+    bg_gradient TEXT DEFAULT 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)',
+    text_color TEXT DEFAULT '#FFFFFF',
+    accent_color TEXT DEFAULT '#818CF8',
+    border_style TEXT DEFAULT 'solid',
+    border_width TEXT DEFAULT '3px',
+    border_radius TEXT DEFAULT '15px',
+    font_family TEXT DEFAULT 'Quicksand',
+    card_bg_color TEXT DEFAULT '#FFFFFF',
+    card_opacity REAL DEFAULT 0.95,
+    card_blur INTEGER DEFAULT 10,
+    card_shadow TEXT DEFAULT '0 8px 32px rgba(0,0,0,0.1)',
+    header_bg_color TEXT DEFAULT '#FFFFFF',
+    header_opacity REAL DEFAULT 0.85,
+    header_blur INTEGER DEFAULT 20,
+    nav_bg_color TEXT DEFAULT '#FFFFFF',
+    nav_opacity REAL DEFAULT 0.95,
+    nav_blur INTEGER DEFAULT 20,
+    button_gradient TEXT,
+    has_animation INTEGER DEFAULT 0,
+    animation_type TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Game scores leaderboard
+CREATE TABLE IF NOT EXISTS game_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kid_user_id INTEGER NOT NULL,
+    score INTEGER NOT NULL,
+    difficulty TEXT,
+    game_type TEXT DEFAULT 'star_catcher',
+    played_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (kid_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Seed data: Admin password is 'changeme'
-INSERT INTO users (email, password_hash, role, kid_name) VALUES 
+INSERT INTO users (email, password_hash, role, kid_name) VALUES
 ('admin@example.com', '$2y$10$5K8ljYqgLmgvKKn1lIwuIuTgPxPmR9lVLTWQ5hJKfQVzPfV4FqmXK', 'admin', NULL),
 ('kid', NULL, 'kid', 'Alex');
 
-INSERT INTO chores (title, description, is_recurring, frequency, default_points, requires_approval, created_by) VALUES 
-('Make Bed', 'Make your bed neatly every morning', 1, 'daily', 5, 0, 1),
-('Clean Room', 'Clean and organize your entire room', 1, 'weekly', 20, 1, 1),
-('Do Homework', 'Complete all homework assignments', 1, 'daily', 10, 1, 1);
+INSERT INTO chores (title, description, recurrence_type, default_points, requires_approval, created_by) VALUES
+('Make Bed', 'Make your bed neatly every morning', 'daily', 5, 0, 1),
+('Clean Room', 'Clean and organize your entire room', 'weekly', 20, 1, 1),
+('Do Homework', 'Complete all homework assignments', 'daily', 10, 1, 1);
 
 INSERT INTO kid_chores (kid_user_id, chore_id, next_due_at) VALUES
-(2, 1, datetime('now', '+1 day', 'start of day', '+7 hours')),
-(2, 2, datetime('now', 'weekday 1', '+7 hours')),
-(2, 3, datetime('now', '+1 day', 'start of day', '+7 hours'));
+(2, 1, datetime('now')),
+(2, 2, datetime('now')),
+(2, 3, datetime('now'));
 
 INSERT INTO quests (title, description, target_reward, created_by, is_active) VALUES
 ('Waterpark Trip', 'Complete all tasks to earn a trip to the waterpark!', 'Family waterpark visit', 1, 1);

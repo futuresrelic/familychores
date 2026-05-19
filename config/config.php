@@ -25,17 +25,95 @@ if (!file_exists(DB_PATH)) {
     require_once __DIR__ . '/../api/init_db.php';
 }
 
+function runMigrations($db) {
+    // Add missing columns to users table
+    $cols = array_column($db->query("PRAGMA table_info(users)")->fetchAll(PDO::FETCH_ASSOC), 'name');
+    if (!in_array('settings', $cols))      $db->exec("ALTER TABLE users ADD COLUMN settings TEXT");
+    if (!in_array('avatar_photo', $cols))  $db->exec("ALTER TABLE users ADD COLUMN avatar_photo BLOB");
+
+    // Migrate chores table: add recurrence_type if it only has the old is_recurring/frequency columns
+    $choreCols = array_column($db->query("PRAGMA table_info(chores)")->fetchAll(PDO::FETCH_ASSOC), 'name');
+    if (!in_array('recurrence_type', $choreCols)) {
+        $db->exec("ALTER TABLE chores ADD COLUMN recurrence_type TEXT NOT NULL DEFAULT 'daily'");
+        if (in_array('frequency', $choreCols)) {
+            $db->exec("UPDATE chores SET recurrence_type = CASE WHEN frequency IN ('daily','weekly','monthly','once') THEN frequency ELSE 'daily' END");
+        }
+    }
+
+    // Add themes table (full schema)
+    $db->exec("CREATE TABLE IF NOT EXISTS themes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        bg_color TEXT DEFAULT '#4F46E5',
+        bg_gradient TEXT DEFAULT 'linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%)',
+        text_color TEXT DEFAULT '#FFFFFF',
+        accent_color TEXT DEFAULT '#818CF8',
+        border_style TEXT DEFAULT 'solid',
+        border_width TEXT DEFAULT '3px',
+        border_radius TEXT DEFAULT '15px',
+        font_family TEXT DEFAULT 'Quicksand',
+        card_bg_color TEXT DEFAULT '#FFFFFF',
+        card_opacity REAL DEFAULT 0.95,
+        card_blur INTEGER DEFAULT 10,
+        card_shadow TEXT DEFAULT '0 8px 32px rgba(0,0,0,0.1)',
+        header_bg_color TEXT DEFAULT '#FFFFFF',
+        header_opacity REAL DEFAULT 0.85,
+        header_blur INTEGER DEFAULT 20,
+        nav_bg_color TEXT DEFAULT '#FFFFFF',
+        nav_opacity REAL DEFAULT 0.95,
+        nav_blur INTEGER DEFAULT 20,
+        button_gradient TEXT,
+        has_animation INTEGER DEFAULT 0,
+        animation_type TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
+
+    // Add any columns that might be missing from older themes tables
+    $themeCols = array_column($db->query("PRAGMA table_info(themes)")->fetchAll(PDO::FETCH_ASSOC), 'name');
+    $themeColsNeeded = [
+        'card_bg_color'   => "ALTER TABLE themes ADD COLUMN card_bg_color TEXT DEFAULT '#FFFFFF'",
+        'card_opacity'    => "ALTER TABLE themes ADD COLUMN card_opacity REAL DEFAULT 0.95",
+        'card_blur'       => "ALTER TABLE themes ADD COLUMN card_blur INTEGER DEFAULT 10",
+        'card_shadow'     => "ALTER TABLE themes ADD COLUMN card_shadow TEXT DEFAULT '0 8px 32px rgba(0,0,0,0.1)'",
+        'header_bg_color' => "ALTER TABLE themes ADD COLUMN header_bg_color TEXT DEFAULT '#FFFFFF'",
+        'header_opacity'  => "ALTER TABLE themes ADD COLUMN header_opacity REAL DEFAULT 0.85",
+        'header_blur'     => "ALTER TABLE themes ADD COLUMN header_blur INTEGER DEFAULT 20",
+        'nav_bg_color'    => "ALTER TABLE themes ADD COLUMN nav_bg_color TEXT DEFAULT '#FFFFFF'",
+        'nav_opacity'     => "ALTER TABLE themes ADD COLUMN nav_opacity REAL DEFAULT 0.95",
+        'nav_blur'        => "ALTER TABLE themes ADD COLUMN nav_blur INTEGER DEFAULT 20",
+        'button_gradient' => "ALTER TABLE themes ADD COLUMN button_gradient TEXT",
+        'has_animation'   => "ALTER TABLE themes ADD COLUMN has_animation INTEGER DEFAULT 0",
+        'animation_type'  => "ALTER TABLE themes ADD COLUMN animation_type TEXT",
+    ];
+    foreach ($themeColsNeeded as $col => $sql) {
+        if (!in_array($col, $themeCols)) $db->exec($sql);
+    }
+
+    // Add game_scores table
+    $db->exec("CREATE TABLE IF NOT EXISTS game_scores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kid_user_id INTEGER NOT NULL,
+        score INTEGER NOT NULL,
+        difficulty TEXT,
+        game_type TEXT DEFAULT 'star_catcher',
+        played_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (kid_user_id) REFERENCES users(id) ON DELETE CASCADE
+    )");
+}
+
 function getDb() {
     try {
         $db = new PDO('sqlite:' . DB_PATH);
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        
+
         // CRITICAL: Increase timeout and enable WAL mode
         $db->exec('PRAGMA busy_timeout = 10000');  // 10 seconds
         $db->exec('PRAGMA journal_mode = WAL');    // Write-Ahead Logging (prevents locks)
         $db->exec('PRAGMA synchronous = NORMAL');  // Faster writes
-        
+
+        runMigrations($db);
+
         return $db;
     } catch (PDOException $e) {
         error_log('Database connection failed: ' . $e->getMessage());
