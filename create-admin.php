@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
 
                 $stmt = $db->prepare("
-                    INSERT INTO users (email, password, role, kid_name, total_points, created_at)
+                    INSERT INTO users (email, password_hash, role, kid_name, total_points, created_at)
                     VALUES (?, ?, 'admin', ?, 0, datetime('now'))
                 ");
                 $stmt->execute([$email, $hashedPassword, $name ?: 'Admin']);

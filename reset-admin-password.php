@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 // Update password
                 $hashedPassword = password_hash($newPassword, PASSWORD_BCRYPT);
-                $stmt = $db->prepare("UPDATE users SET password = ? WHERE id = ?");
+                $stmt = $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
                 $stmt->execute([$hashedPassword, $admin['id']]);
 
                 $message = '✅ Password reset successful! You can now log in with your new password.';
