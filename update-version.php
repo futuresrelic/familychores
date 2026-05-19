@@ -106,6 +106,24 @@ $version['timestamp'] = time();
 
 file_put_contents($versionFile, json_encode($version, JSON_PRETTY_PRINT));
 
+// Touch both service worker files so browsers detect a changed SW and re-install it.
+// Without this, the SW byte-for-byte identical file won't trigger updatefound.
+$swFiles = [
+    __DIR__ . '/admin/sw.js',
+    __DIR__ . '/kid/sw.js',
+];
+foreach ($swFiles as $swFile) {
+    if (file_exists($swFile)) {
+        $content = file_get_contents($swFile);
+        // Replace or append the version stamp comment on line 1
+        $content = preg_replace('/^\/\/ Cache version: .*$/m', '// Cache version: ' . $version['timestamp'], $content, 1);
+        if (strpos($content, '// Cache version:') === false) {
+            $content = '// Cache version: ' . $version['timestamp'] . "\n" . $content;
+        }
+        file_put_contents($swFile, $content);
+    }
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="en">

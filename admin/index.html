@@ -443,11 +443,73 @@
     </script>
 
     <script>
+        let adminSwRegistration = null;
+        let adminCurrentVersion = null;
+        let adminLastCheck = 0;
+        const ADMIN_CHECK_INTERVAL = 5 * 60 * 1000;
+
+        function applyAdminUpdate() {
+            if (adminSwRegistration && adminSwRegistration.waiting) {
+                adminSwRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+            window.location.reload();
+        }
+
+        async function checkAdminVersion() {
+            const now = Date.now();
+            if (now - adminLastCheck < ADMIN_CHECK_INTERVAL) return;
+            adminLastCheck = now;
+            try {
+                const res = await fetch('/api/version.php', { cache: 'no-store' });
+                const data = await res.json();
+                if (adminCurrentVersion === null) {
+                    adminCurrentVersion = data.version;
+                } else if (data.version !== adminCurrentVersion) {
+                    adminCurrentVersion = data.version;
+                    const btn = document.getElementById('admin-update-btn');
+                    if (btn) btn.style.display = 'flex';
+                }
+            } catch (e) { /* network error, ignore */ }
+        }
+
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/admin/sw.js')
-            .then(() => console.log('Service Worker Registered'))
-            .catch(err => console.log('Service Worker Registration Failed:', err));
+            navigator.serviceWorker.register('/admin/sw.js')
+                .then((reg) => {
+                    adminSwRegistration = reg;
+                    console.log('Service Worker Registered');
+                    checkAdminVersion();
+                    document.addEventListener('visibilitychange', () => {
+                        if (!document.hidden) checkAdminVersion();
+                    });
+                    window.addEventListener('focus', () => checkAdminVersion());
+                    reg.addEventListener('updatefound', () => {
+                        const nw = reg.installing;
+                        nw.addEventListener('statechange', () => {
+                            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                                checkAdminVersion();
+                            }
+                        });
+                    });
+                })
+                .catch(err => console.log('Service Worker Registration Failed:', err));
         }
     </script>
+
+    <!-- Admin update notification button -->
+    <button id="admin-update-btn"
+        onclick="applyAdminUpdate()"
+        title="Update Available — click to reload"
+        style="display:none;position:fixed;bottom:20px;right:20px;z-index:9999;
+               background:#4F46E5;color:#fff;border:none;border-radius:50px;
+               padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;
+               box-shadow:0 4px 15px rgba(79,70,229,0.4);animation:pulse 2s infinite;">
+        🔄 Update Available
+    </button>
+    <style>
+        @keyframes pulse {
+            0%,100% { box-shadow: 0 4px 15px rgba(79,70,229,0.4); }
+            50%      { box-shadow: 0 4px 25px rgba(79,70,229,0.8); }
+        }
+    </style>
 </body>
 </html>
