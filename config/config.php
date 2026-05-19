@@ -104,6 +104,16 @@ function runMigrations($db) {
         played_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (kid_user_id) REFERENCES users(id) ON DELETE CASCADE
     )");
+
+    // Add game_settings table
+    $db->exec("CREATE TABLE IF NOT EXISTS game_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_type TEXT NOT NULL UNIQUE,
+        settings_json TEXT NOT NULL,
+        updated_by INTEGER,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (updated_by) REFERENCES users(id)
+    )");
 }
 
 function getDb() {

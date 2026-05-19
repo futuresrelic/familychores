@@ -1048,3 +1048,78 @@ main {
     margin-bottom: 2px;
     line-height: 1.2;
 }
+
+/* ============================================
+   🎹 PIANO INSTRUMENT
+   ============================================ */
+.piano-keyboard {
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    border-radius: 0 0 8px 8px;
+}
+
+.piano-key {
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+    transition: background 0.04s, box-shadow 0.04s;
+    box-sizing: border-box;
+}
+
+.piano-white {
+    width: 24px;
+    height: 150px;
+    background: linear-gradient(to bottom, #f8f8f8, #ffffff);
+    border: 1px solid #999;
+    border-radius: 0 0 5px 5px;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 6px;
+    box-shadow: 1px 2px 4px rgba(0,0,0,0.18);
+}
+
+.piano-white span {
+    font-size: 8px;
+    color: #888;
+    font-weight: 700;
+    user-select: none;
+    pointer-events: none;
+}
+
+.piano-white.piano-key-active {
+    background: linear-gradient(to bottom, #b3d9ff, #7ec8ff);
+    box-shadow: inset 0 -3px 6px rgba(0,0,80,0.15), 1px 2px 4px rgba(0,0,0,0.1);
+}
+
+.piano-octave-start {
+    border-left: 2px solid #8B5CF6 !important;
+}
+
+.piano-black {
+    position: absolute;
+    width: 14px;
+    height: 90px;
+    background: linear-gradient(to bottom, #444, #111);
+    border-radius: 0 0 4px 4px;
+    z-index: 2;
+    top: 0;
+    box-shadow: 2px 4px 8px rgba(0,0,0,0.5), inset 0 1px 2px rgba(255,255,255,0.1);
+}
+
+.piano-black.piano-key-active {
+    background: linear-gradient(to bottom, #6644bb, #3322aa);
+    box-shadow: 1px 2px 5px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.15);
+}
+
+.piano-wave-btn {
+    transition: all 0.15s;
+}
+
+.piano-wave-btn.active {
+    border-color: #8B5CF6 !important;
+    background: #EDE9FE !important;
+    color: #5B21B6 !important;
+}

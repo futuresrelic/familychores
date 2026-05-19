@@ -1,4 +1,4 @@
-// Cache version: 1747699200
+// Cache version: 1747785600
 // Fetch version from central system
 let CACHE_VERSION = 'v1.0.0';
 let CACHE_NAME = `admin-app-${CACHE_VERSION}`;

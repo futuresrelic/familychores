@@ -3265,6 +3265,38 @@ function clearThemeAnimation() {
     }
 }
 
+function startThemeAnimation(animationType) {
+    const existing = document.getElementById('theme-animation-container');
+    if (existing) existing.innerHTML = '';
+    if (!animationType) return;
+    let container = document.getElementById('theme-animation-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'theme-animation-container';
+        container.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:hidden;';
+        document.body.insertBefore(container, document.body.firstChild);
+    }
+    switch (animationType) {
+        case 'stars':      createStarryBackground(); break;
+        case 'bubbles':    createBubbles(); break;
+        case 'snowflakes': createSnowflakes(); break;
+        case 'embers':     createEmbers(); break;
+        case 'sparkles':   createSparkles(); break;
+        case 'sand':       createSandBlowing(); break;
+        case 'aurora':     createAurora(); break;
+        case 'leaves':     createLeaves(); break;
+        case 'candy':      createCandySprinkles(); break;
+        case 'retro':      createRetroSprites(); break;
+        case 'birds':      createBirds(); break;
+        default:           console.warn('Unknown animation type:', animationType);
+    }
+}
+
+function stopThemeAnimation() {
+    const container = document.getElementById('theme-animation-container');
+    if (container) container.innerHTML = '';
+}
+
 // 1. STARRY BACKGROUND (Space theme)
 function createStarryBackground() {
     clearThemeAnimation();
@@ -4150,44 +4182,22 @@ window.submitChore = async function(choreId, choreTitle) {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🎨 ChoreQuest Enhancements Loaded!');
-    
-    // Add button effects
     addButtonEffects();
-    
-    // Add sound toggle to settings
     setTimeout(addSoundToggle, 1000);
-    
-    // Check if any animated theme is active
-    const settings = JSON.parse(localStorage.getItem('kid_settings') || '{}');
-    if (settings.themeName) {
-        const themeObj = window.themes || themes || {};
-        const currentTheme = themeObj[settings.themeName];
-        if (currentTheme) {
-            if (currentTheme.stars) createStarryBackground();
-            else if (currentTheme.bubbles) createBubbles();
-            else if (currentTheme.snowflakes) createSnowflakes();
-            else if (currentTheme.embers) createEmbers();
-            else if (currentTheme.sparkles) createSparkles();
+    // Main animation start happens in showAppScreen → applyThemeStyling → startThemeAnimation
+    // after themes are loaded from API. The fallback below handles edge cases.
+    setTimeout(() => {
+        const settings = JSON.parse(localStorage.getItem('kid_settings') || '{}');
+        if (settings.themeName && typeof themes !== 'undefined' && themes[settings.themeName]) {
+            const t = themes[settings.themeName];
+            if (t.hasAnimation && t.animationType) startThemeAnimation(t.animationType);
         }
-    }
+    }, 500);
 });
 
 // Also initialize immediately if DOM is already loaded
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
     addButtonEffects();
-    
-    const settings = JSON.parse(localStorage.getItem('kid_settings') || '{}');
-    if (settings.themeName) {
-        const themeObj = window.themes || themes || {};
-        const currentTheme = themeObj[settings.themeName];
-        if (currentTheme) {
-            if (currentTheme.stars) createStarryBackground();
-            else if (currentTheme.bubbles) createBubbles();
-            else if (currentTheme.snowflakes) createSnowflakes();
-            else if (currentTheme.embers) createEmbers();
-            else if (currentTheme.sparkles) createSparkles();
-        }
-    }
 }
 
 console.log('🎉 Theme animations package loaded!');
@@ -5261,13 +5271,29 @@ const MUSIC_SETTINGS = {
     }
 };
 
-// Musical notes for each color (C major scale)
-const MUSIC_NOTES = {
-    red: { frequency: 261.63, note: 'C' },    // C4
-    blue: { frequency: 329.63, note: 'E' },   // E4
-    green: { frequency: 392.00, note: 'G' },  // G4
-    yellow: { frequency: 440.00, note: 'A' }  // A4
+// Musical notes for each color — mutable so admin settings can override them
+let MUSIC_NOTES = {
+    red:    { frequency: 261.63, note: 'C4', waveform: 'sine' },
+    blue:   { frequency: 329.63, note: 'E4', waveform: 'sine' },
+    green:  { frequency: 392.00, note: 'G4', waveform: 'sine' },
+    yellow: { frequency: 440.00, note: 'A4', waveform: 'sine' }
 };
+
+// Load Beat Master settings from server
+(async function loadBeatMasterSettings() {
+    try {
+        const res = await apiCall('get_game_settings', { game_type: 'beat_master' });
+        if (res.ok && res.settings && res.settings.pads) {
+            res.settings.pads.forEach(pad => {
+                if (MUSIC_NOTES[pad.color]) {
+                    MUSIC_NOTES[pad.color].frequency = pad.frequency;
+                    MUSIC_NOTES[pad.color].note      = pad.note;
+                    MUSIC_NOTES[pad.color].waveform  = pad.waveform || 'sine';
+                }
+            });
+        }
+    } catch (e) { /* use defaults */ }
+})();
 
 // Start button
 const musicStartBtn = document.getElementById('music-start-btn');
@@ -5370,7 +5396,7 @@ function playMusicPad(color, isPlayerInput) {
         pad.style.filter = 'brightness(1.5)';
         
         // Play sound
-        playMusicNote(MUSIC_NOTES[color].frequency);
+        playMusicNote(MUSIC_NOTES[color].frequency, MUSIC_NOTES[color].waveform);
         
         setTimeout(() => {
             pad.style.transform = 'scale(1)';
@@ -5383,43 +5409,35 @@ function playMusicPad(color, isPlayerInput) {
 // Create ONE shared audio context for the music game (at the top of the music section)
 let sharedMusicAudioContext = null;
 
-function playMusicNote(frequency) {
-    // Use existing beep system if available
-    if (typeof playSound === 'function') {
-        playSound('click');
-    }
-    
-    // Play actual musical note with proper cleanup
+function playMusicNote(frequency, waveform) {
     try {
-        // Create context once and reuse it
         if (!sharedMusicAudioContext) {
             sharedMusicAudioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
-        
+        // Resume if browser suspended context before a user gesture
+        if (sharedMusicAudioContext.state === 'suspended') {
+            sharedMusicAudioContext.resume();
+        }
+
         const oscillator = sharedMusicAudioContext.createOscillator();
         const gainNode = sharedMusicAudioContext.createGain();
-        
+
         oscillator.connect(gainNode);
         gainNode.connect(sharedMusicAudioContext.destination);
-        
+
         oscillator.frequency.value = frequency;
-        oscillator.type = 'sine';
-        
-        gainNode.gain.setValueAtTime(0.3, sharedMusicAudioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, sharedMusicAudioContext.currentTime + 0.3);
-        
-        oscillator.start(sharedMusicAudioContext.currentTime);
-        oscillator.stop(sharedMusicAudioContext.currentTime + 0.3);
-        
-        // Clean up after the note finishes
-        oscillator.onended = () => {
-            oscillator.disconnect();
-            gainNode.disconnect();
-        };
-        
+        oscillator.type = waveform || 'sine';
+
+        const t = sharedMusicAudioContext.currentTime;
+        gainNode.gain.setValueAtTime(0, t);
+        gainNode.gain.linearRampToValueAtTime(0.45, t + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+
+        oscillator.start(t);
+        oscillator.stop(t + 0.5);
+        oscillator.onended = () => { oscillator.disconnect(); gainNode.disconnect(); };
     } catch (e) {
-        console.log('🔇 Web Audio error (silently ignored):', e.message);
-        // Don't crash the game, just skip this note
+        console.log('🔇 Web Audio error:', e.message);
     }
 }
 
@@ -5595,4 +5613,134 @@ async function loadLeaderboard() {
     reapplyCurrentTheme();
 }
 
-console.log('🎮 All games loaded! Star Catcher, Math Quest, and Beat Master ready to play!');
+console.log('🎮 All games loaded! Star Catcher, Math Quest, Beat Master, and Piano ready to play!');
+
+// ============================================
+// 🎹 PIANO INSTRUMENT
+// ============================================
+
+let pianoAudioContext = null;
+let pianoActiveNotes = new Map(); // freq → { osc, gain, osc2, gain2 }
+let pianoWaveform = 'triangle';
+
+function initPiano() {
+    const keys = document.querySelectorAll('#piano-keys .piano-key');
+    if (!keys.length) return;
+
+    keys.forEach(key => {
+        const freq = parseFloat(key.dataset.freq);
+        const note = key.dataset.note;
+
+        key.addEventListener('mousedown', e => { e.preventDefault(); pianoNoteOn(freq, note, key); });
+        key.addEventListener('mouseup',   e => { e.preventDefault(); pianoNoteOff(freq, key); });
+        key.addEventListener('mouseleave',() => pianoNoteOff(freq, key));
+
+        key.addEventListener('touchstart', e => { e.preventDefault(); pianoNoteOn(freq, note, key); }, { passive: false });
+        key.addEventListener('touchend',   e => { e.preventDefault(); pianoNoteOff(freq, key); }, { passive: false });
+        key.addEventListener('touchcancel',e => { e.preventDefault(); pianoNoteOff(freq, key); }, { passive: false });
+    });
+
+    // Waveform selector
+    document.querySelectorAll('.piano-wave-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.piano-wave-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            pianoWaveform = btn.dataset.wave;
+        });
+    });
+
+    // Load piano settings from server
+    (async () => {
+        try {
+            const res = await apiCall('get_game_settings', { game_type: 'piano' });
+            if (res.ok && res.settings && res.settings.waveform) {
+                pianoWaveform = res.settings.waveform;
+                const activeBtn = document.querySelector(`.piano-wave-btn[data-wave="${pianoWaveform}"]`);
+                if (activeBtn) {
+                    document.querySelectorAll('.piano-wave-btn').forEach(b => b.classList.remove('active'));
+                    activeBtn.classList.add('active');
+                }
+            }
+        } catch (e) { /* use defaults */ }
+    })();
+}
+
+function getPianoCtx() {
+    if (!pianoAudioContext) {
+        pianoAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (pianoAudioContext.state === 'suspended') pianoAudioContext.resume();
+    return pianoAudioContext;
+}
+
+function pianoNoteOn(freq, noteName, keyEl) {
+    if (pianoActiveNotes.has(freq)) return;
+    const ctx = getPianoCtx();
+    const now = ctx.currentTime;
+
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const osc2  = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+
+    osc.type  = pianoWaveform;
+    osc2.type = pianoWaveform;
+    osc.frequency.value  = freq;
+    osc2.frequency.value = freq * 1.003; // slight chorus detune
+
+    osc.connect(gain);   gain.connect(ctx.destination);
+    osc2.connect(gain2); gain2.connect(ctx.destination);
+
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.35, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.12);
+
+    gain2.gain.setValueAtTime(0, now);
+    gain2.gain.linearRampToValueAtTime(0.12, now + 0.015);
+    gain2.gain.exponentialRampToValueAtTime(0.06, now + 0.12);
+
+    osc.start(now); osc2.start(now);
+
+    pianoActiveNotes.set(freq, { osc, gain, osc2, gain2 });
+    keyEl.classList.add('piano-key-active');
+
+    const display = document.getElementById('piano-current-note');
+    if (display) display.textContent = '🎵 ' + noteName;
+}
+
+function pianoNoteOff(freq, keyEl) {
+    const note = pianoActiveNotes.get(freq);
+    if (!note) return;
+    const ctx = getPianoCtx();
+    const now = ctx.currentTime;
+
+    [note.gain, note.gain2].forEach(g => {
+        g.gain.cancelScheduledValues(now);
+        g.gain.setValueAtTime(g.gain.value, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    });
+    note.osc.stop(now + 0.25);
+    note.osc2.stop(now + 0.25);
+    note.osc.onended  = () => { try { note.osc.disconnect();  note.gain.disconnect();  } catch(e){} };
+    note.osc2.onended = () => { try { note.osc2.disconnect(); note.gain2.disconnect(); } catch(e){} };
+
+    pianoActiveNotes.delete(freq);
+    keyEl.classList.remove('piano-key-active');
+}
+
+// Wire up piano when the piano game panel is shown
+(function() {
+    // Use MutationObserver to detect when #game-piano becomes visible
+    const target = document.getElementById('game-piano');
+    if (!target) return;
+    let inited = false;
+    const obs = new MutationObserver(() => {
+        if (target.style.display !== 'none' && !inited) {
+            inited = true;
+            initPiano();
+        }
+    });
+    obs.observe(target, { attributes: true, attributeFilter: ['style'] });
+    // Also init if already visible on load
+    if (target.style.display !== 'none') { inited = true; initPiano(); }
+})();

@@ -109,6 +109,9 @@ async function loadTabData(tabName) {
         case 'themes':
             await loadThemes();
             break;
+        case 'games':
+            await loadGames();
+            break;
         case 'redemptions':
             await loadRedemptions('pending');
             break;
@@ -1380,6 +1383,156 @@ async function saveTheme(themeId) {
         loadThemes();
     } else {
         showError(result.error);
+    }
+}
+
+// Games Configuration
+async function loadGames() {
+    const [bmRes, pianoRes] = await Promise.all([
+        apiCall('get_game_settings', { game_type: 'beat_master' }),
+        apiCall('get_game_settings', { game_type: 'piano' }),
+    ]);
+
+    const bmPads = (bmRes.ok && bmRes.settings.pads) ? bmRes.settings.pads : [
+        { color: 'red',    note: 'C4', frequency: 261.63, waveform: 'sine' },
+        { color: 'blue',   note: 'E4', frequency: 329.63, waveform: 'sine' },
+        { color: 'green',  note: 'G4', frequency: 392.00, waveform: 'sine' },
+        { color: 'yellow', note: 'A4', frequency: 440.00, waveform: 'sine' },
+    ];
+    const pianoWaveform = (pianoRes.ok && pianoRes.settings.waveform) ? pianoRes.settings.waveform : 'triangle';
+
+    const PAD_COLORS = { red: '#EF4444', blue: '#3B82F6', green: '#10B981', yellow: '#F59E0B' };
+    const NOTE_PRESETS = [
+        { label: 'C3 (130 Hz)',  freq: 130.81 }, { label: 'D3 (147 Hz)',  freq: 146.83 },
+        { label: 'E3 (165 Hz)',  freq: 164.81 }, { label: 'G3 (196 Hz)',  freq: 196.00 },
+        { label: 'A3 (220 Hz)',  freq: 220.00 }, { label: 'C4 (262 Hz)',  freq: 261.63 },
+        { label: 'D4 (294 Hz)',  freq: 293.66 }, { label: 'E4 (330 Hz)',  freq: 329.63 },
+        { label: 'F4 (349 Hz)',  freq: 349.23 }, { label: 'G4 (392 Hz)',  freq: 392.00 },
+        { label: 'A4 (440 Hz)',  freq: 440.00 }, { label: 'B4 (494 Hz)',  freq: 493.88 },
+        { label: 'C5 (523 Hz)',  freq: 523.25 }, { label: 'D5 (587 Hz)',  freq: 587.33 },
+        { label: 'E5 (659 Hz)',  freq: 659.25 }, { label: 'G5 (784 Hz)',  freq: 783.99 },
+    ];
+
+    const presetOptions = NOTE_PRESETS.map(p => `<option value="${p.freq}">${p.label}</option>`).join('');
+
+    const padRows = bmPads.map((pad, i) => `
+        <div style="display:flex; align-items:center; gap:12px; padding:12px; background:white; border-radius:12px; margin-bottom:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+            <div style="width:36px; height:36px; border-radius:50%; background:${PAD_COLORS[pad.color]}; flex-shrink:0;"></div>
+            <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; text-transform:capitalize; margin-bottom:6px;">${pad.color} Pad</div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <select id="bm-pad-note-${i}" style="flex:1; min-width:120px; padding:6px 8px; border:1px solid #D1D5DB; border-radius:8px; font-size:13px;">
+                        ${presetOptions}
+                    </select>
+                    <input id="bm-pad-freq-${i}" type="number" step="0.01" min="60" max="2000"
+                        value="${pad.frequency.toFixed(2)}"
+                        style="width:90px; padding:6px 8px; border:1px solid #D1D5DB; border-radius:8px; font-size:13px;"
+                        placeholder="Hz" title="Custom frequency (Hz)">
+                    <select id="bm-pad-wave-${i}" style="width:110px; padding:6px 8px; border:1px solid #D1D5DB; border-radius:8px; font-size:13px;">
+                        <option value="sine"     ${pad.waveform==='sine'     ? 'selected':''}>Sine (soft)</option>
+                        <option value="triangle" ${pad.waveform==='triangle' ? 'selected':''}>Triangle</option>
+                        <option value="square"   ${pad.waveform==='square'   ? 'selected':''}>Square (retro)</option>
+                        <option value="sawtooth" ${pad.waveform==='sawtooth' ? 'selected':''}>Sawtooth</option>
+                    </select>
+                    <button onclick="previewBeatPad(${i})" style="padding:6px 12px; background:#8B5CF6; color:white; border:none; border-radius:8px; cursor:pointer; font-size:13px;">▶ Test</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    const container = document.getElementById('games-list');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="card" style="margin-bottom:20px;">
+            <h3 style="margin:0 0 4px;">🎵 Beat Master — Pad Notes</h3>
+            <p style="color:#6B7280; font-size:14px; margin:0 0 16px;">Customize the note each colored pad plays. Pick from the preset dropdown or type a custom Hz value.</p>
+            ${padRows}
+            <button onclick="saveBeatMasterSettings()" style="width:100%; padding:14px; background:linear-gradient(135deg,#8B5CF6,#6D28D9); color:white; border:none; border-radius:12px; font-size:16px; font-weight:600; cursor:pointer; margin-top:8px;">
+                💾 Save Beat Master Settings
+            </button>
+        </div>
+        <div class="card">
+            <h3 style="margin:0 0 4px;">🎹 Piano — Default Sound</h3>
+            <p style="color:#6B7280; font-size:14px; margin:0 0 12px;">Choose the default waveform kids hear when opening the Piano.</p>
+            <select id="piano-waveform-select" style="width:100%; padding:10px; border:1px solid #D1D5DB; border-radius:8px; font-size:15px; margin-bottom:12px;">
+                <option value="triangle" ${pianoWaveform==='triangle' ? 'selected':''}>🎹 Triangle (piano-like)</option>
+                <option value="sine"     ${pianoWaveform==='sine'     ? 'selected':''}>🎵 Sine (flute-like)</option>
+                <option value="sawtooth" ${pianoWaveform==='sawtooth' ? 'selected':''}>🎸 Sawtooth (guitar-like)</option>
+                <option value="square"   ${pianoWaveform==='square'   ? 'selected':''}>🎮 Square (retro)</option>
+            </select>
+            <button onclick="savePianoSettings()" style="width:100%; padding:14px; background:linear-gradient(135deg,#4F46E5,#3730A3); color:white; border:none; border-radius:12px; font-size:16px; font-weight:600; cursor:pointer;">
+                💾 Save Piano Settings
+            </button>
+        </div>
+    `;
+
+    // Sync preset dropdowns to current frequencies
+    bmPads.forEach((pad, i) => {
+        const sel = document.getElementById(`bm-pad-note-${i}`);
+        if (!sel) return;
+        // Pre-select the closest preset
+        const closest = NOTE_PRESETS.reduce((a, b) =>
+            Math.abs(a.freq - pad.frequency) < Math.abs(b.freq - pad.frequency) ? a : b);
+        sel.value = closest.freq;
+        // When preset changes, update the Hz input
+        sel.addEventListener('change', () => {
+            const freqInput = document.getElementById(`bm-pad-freq-${i}`);
+            if (freqInput) freqInput.value = parseFloat(sel.value).toFixed(2);
+        });
+    });
+}
+
+// Beat Master preview — plays a tone in the admin browser
+let _adminAudioCtx = null;
+function previewBeatPad(padIndex) {
+    try {
+        if (!_adminAudioCtx) _adminAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (_adminAudioCtx.state === 'suspended') _adminAudioCtx.resume();
+        const freqInput = document.getElementById(`bm-pad-freq-${padIndex}`);
+        const waveInput = document.getElementById(`bm-pad-wave-${padIndex}`);
+        const freq = parseFloat(freqInput?.value) || 440;
+        const wave = waveInput?.value || 'sine';
+        const osc = _adminAudioCtx.createOscillator();
+        const gain = _adminAudioCtx.createGain();
+        osc.connect(gain); gain.connect(_adminAudioCtx.destination);
+        osc.type = wave; osc.frequency.value = freq;
+        const t = _adminAudioCtx.currentTime;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.4, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+        osc.start(t); osc.stop(t + 0.5);
+        osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+    } catch (e) { console.warn('Preview audio error:', e); }
+}
+
+async function saveBeatMasterSettings() {
+    const pads = [];
+    const PAD_COLORS = ['red', 'blue', 'green', 'yellow'];
+    for (let i = 0; i < 4; i++) {
+        const freq = parseFloat(document.getElementById(`bm-pad-freq-${i}`)?.value) || 440;
+        const wave = document.getElementById(`bm-pad-wave-${i}`)?.value || 'sine';
+        const notePresets = {
+            261.63:'C4', 293.66:'D4', 329.63:'E4', 349.23:'F4', 392.00:'G4',
+            440.00:'A4', 493.88:'B4', 523.25:'C5', 130.81:'C3', 220.00:'A3',
+        };
+        const note = notePresets[freq] || `${freq}Hz`;
+        pads.push({ color: PAD_COLORS[i], note, frequency: freq, waveform: wave });
+    }
+    const result = await apiCall('save_game_settings', { game_type: 'beat_master', settings: { pads } });
+    if (result.ok) {
+        showSuccess('Beat Master settings saved! Kids will hear the new notes next time they open the game.');
+    } else {
+        showError(result.error || 'Failed to save');
+    }
+}
+
+async function savePianoSettings() {
+    const waveform = document.getElementById('piano-waveform-select')?.value || 'triangle';
+    const result = await apiCall('save_game_settings', { game_type: 'piano', settings: { waveform } });
+    if (result.ok) {
+        showSuccess('Piano settings saved!');
+    } else {
+        showError(result.error || 'Failed to save');
     }
 }
 

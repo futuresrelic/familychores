@@ -2331,7 +2331,42 @@ case 'delete_user_avatar':
             'user_id' => $_SESSION['user_id'] ?? 'NOT SET'
         ]);
         break;
-        
+
+    case 'get_game_settings': {
+        $db = getDb();
+        $gameType = $input['game_type'] ?? $_GET['game_type'] ?? 'beat_master';
+        $stmt = $db->prepare("SELECT settings_json FROM game_settings WHERE game_type = ?");
+        $stmt->execute([$gameType]);
+        $row = $stmt->fetch();
+        $defaults = [
+            'beat_master' => ['pads' => [
+                ['color' => 'red',    'note' => 'C4', 'frequency' => 261.63, 'waveform' => 'sine'],
+                ['color' => 'blue',   'note' => 'E4', 'frequency' => 329.63, 'waveform' => 'sine'],
+                ['color' => 'green',  'note' => 'G4', 'frequency' => 392.00, 'waveform' => 'sine'],
+                ['color' => 'yellow', 'note' => 'A4', 'frequency' => 440.00, 'waveform' => 'sine'],
+            ]],
+            'piano' => ['waveform' => 'triangle'],
+        ];
+        $settings = $row ? json_decode($row['settings_json'], true) : ($defaults[$gameType] ?? []);
+        echo json_encode(['ok' => true, 'settings' => $settings]);
+        break;
+    }
+
+    case 'save_game_settings': {
+        requireAdmin();
+        $db = getDb();
+        $gameType = $input['game_type'] ?? '';
+        $settings = $input['settings'] ?? [];
+        if (!$gameType) { echo json_encode(['ok' => false, 'error' => 'game_type required']); break; }
+        $stmt = $db->prepare("INSERT INTO game_settings (game_type, settings_json, updated_by, updated_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(game_type) DO UPDATE SET settings_json=excluded.settings_json,
+                updated_by=excluded.updated_by, updated_at=excluded.updated_at");
+        $stmt->execute([$gameType, json_encode($settings), $_SESSION['admin_id'] ?? null]);
+        echo json_encode(['ok' => true]);
+        break;
+    }
+
 default:
             jsonResponse(false, null, 'Invalid action');
     }

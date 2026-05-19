@@ -187,6 +187,16 @@ CREATE TABLE IF NOT EXISTS themes (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Game configuration (Beat Master notes, Piano waveform, etc.)
+CREATE TABLE IF NOT EXISTS game_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_type TEXT NOT NULL UNIQUE,
+    settings_json TEXT NOT NULL,
+    updated_by INTEGER,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (updated_by) REFERENCES users(id)
+);
+
 -- Game scores leaderboard
 CREATE TABLE IF NOT EXISTS game_scores (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
