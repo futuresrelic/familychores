@@ -12,7 +12,7 @@ This file gives any new Claude session full context on the project so we don't r
 - **API** (`/api/api.php`) — single PHP file handling all JSON API calls via an `action` parameter
 - **Database** — SQLite at `/data/app.sqlite`, managed via PDO in `config/config.php`
 
-**Live deployment:** Railway (Docker/PHP 8.2+Apache), branch `claude/complete-railway-migration-CraiD`
+**Live deployment:** Railway (Docker/PHP 8.2+Apache), branch `claude/resume-after-api-error-RsLQO`
 
 **Owner:** futuresrelic@gmail.com (admin), jaghri@gmail.com (second admin)
 
@@ -37,9 +37,10 @@ This file gives any new Claude session full context on the project so we don't r
 |--------|---------|
 | `main` | Original code (DreamHost era, do NOT deploy Railway from this) |
 | `claude/familychores-setup-018zyGX7YhS791TNkmV4SdKw` | First Railway migration branch (superseded) |
-| `claude/complete-railway-migration-CraiD` | **Active Railway branch — always work here** |
+| `claude/complete-railway-migration-CraiD` | Previous active branch (superseded) |
+| `claude/resume-after-api-error-RsLQO` | **Current active Railway branch — always work here** |
 
-Railway is configured to deploy from `claude/complete-railway-migration-CraiD`. Push to this branch to deploy.
+Railway is configured to deploy from `claude/resume-after-api-error-RsLQO`. Push to this branch to deploy.
 
 ---
 
@@ -144,6 +145,7 @@ Key actions:
 ## Authentication
 
 - **Admin:** Email + bcrypt password, PHP session (`$_SESSION['admin_id']`)
+- **Admin (Google):** Google Sign-In via GIS popup → JWT verified server-side → session set. See `/join.php` and `google_auth` / `get_google_client_id` API actions.
 - **Kid:** Pairing code → device token stored in cookie (`kid_token`), referenced via `devices` table
 
 ---
@@ -151,7 +153,7 @@ Key actions:
 ## Railway Deployment
 
 ### How it works
-1. Railway watches `claude/complete-railway-migration-CraiD` branch
+1. Railway watches `claude/resume-after-api-error-RsLQO` branch
 2. On push → builds Docker image from `Dockerfile`
 3. Container starts via `docker-entrypoint.sh`
 4. A **persistent volume** is mounted at `/var/www/html/data` to keep the SQLite DB across deploys
@@ -161,14 +163,15 @@ Key actions:
 ```bash
 git add <files>
 git commit -m "description"
-git push -u origin claude/complete-railway-migration-CraiD
+git push -u origin claude/resume-after-api-error-RsLQO
 ```
 Railway auto-redeploys within ~2 minutes.
 
-### Environment
-- Port: Railway sets `$PORT` env var; `docker-entrypoint.sh` configures Apache to use it
+### Environment variables
+- `PORT` — set automatically by Railway; used by `docker-entrypoint.sh` to configure Apache
+- `GOOGLE_CLIENT_ID` — **must be set manually** in Railway Variables tab for Google Sign-In to work
+  - Value: `242406448021-7k8l0s3tc5dofq75vklndp0nbuno95eo.apps.googleusercontent.com`
 - PHP session path: `/var/www/html/data/sessions/`
-- No environment variables required for basic operation (SQLite is self-contained)
 
 ### Utility pages (deploy, use once, ideally remove after)
 - `/create-admin.php` — create admin account (code: `CREATE2024`)
