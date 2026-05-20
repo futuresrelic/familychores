@@ -1181,8 +1181,7 @@ function saveSettings() {
                 if (!container) {
                     container = document.createElement('div');
                     container.id = 'theme-animation-container';
-                    container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0;';
-                    document.body.insertBefore(container, document.body.firstChild);
+                    container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 500;';                    document.body.insertBefore(container, document.body.firstChild);
                 }
                 
                 // Call the animation function directly based on type
@@ -2132,7 +2131,7 @@ function applyTheme(themeName) {
             if (!container) {
                 container = document.createElement('div');
                 container.id = 'theme-animation-container';
-                container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0;';
+                container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 500;';
                 document.body.insertBefore(container, document.body.firstChild);
             }
             
@@ -3273,7 +3272,7 @@ function startThemeAnimation(animationType) {
     if (!container) {
         container = document.createElement('div');
         container.id = 'theme-animation-container';
-        container.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:hidden;';
+        container.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:500;overflow:hidden;';
         document.body.insertBefore(container, document.body.firstChild);
     }
     switch (animationType) {

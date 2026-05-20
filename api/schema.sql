@@ -1,3 +1,10 @@
+-- Family groups
+CREATE TABLE IF NOT EXISTS families (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL DEFAULT 'My Family',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Users table (admin and kids)
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -9,7 +16,10 @@ CREATE TABLE IF NOT EXISTS users (
     settings TEXT,
     avatar_photo BLOB,
     is_test_account INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    family_id INTEGER,
+    google_sub TEXT UNIQUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (family_id) REFERENCES families(id)
 );
 
 -- Devices for kid pairing

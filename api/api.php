@@ -56,18 +56,27 @@ function requireAdmin() {
     if (!isset($_SESSION['admin_id'])) {
         jsonResponse(false, null, 'Unauthorized');
     }
-    
-    // Return admin info for use in the calling code
+
     $db = getDb();
-    $stmt = $db->prepare("SELECT id as user_id, email FROM users WHERE id = ? AND role = 'admin'");
+    $stmt = $db->prepare("SELECT id as user_id, email, family_id FROM users WHERE id = ? AND role = 'admin'");
     $stmt->execute([$_SESSION['admin_id']]);
     $admin = $stmt->fetch();
-    
+
     if (!$admin) {
         jsonResponse(false, null, 'Unauthorized');
     }
-    
+
     return $admin;
+}
+
+// Returns the current admin's family_id (or 1 as fallback for legacy data)
+function getAdminFamilyId() {
+    if (!isset($_SESSION['admin_id'])) return 1;
+    $db = getDb();
+    $stmt = $db->prepare("SELECT family_id FROM users WHERE id = ?");
+    $stmt->execute([$_SESSION['admin_id']]);
+    $row = $stmt->fetch();
+    return $row && $row['family_id'] ? (int)$row['family_id'] : 1;
 }
 
 function getKidFromToken() {
@@ -241,10 +250,11 @@ try {
         }
         
         $db = getDb();
-        $stmt = $db->prepare("INSERT INTO users (role, kid_name) VALUES ('kid', ?)");
-        $stmt->execute([$name]);
+        $familyId = getAdminFamilyId();
+        $stmt = $db->prepare("INSERT INTO users (role, kid_name, family_id) VALUES ('kid', ?, ?)");
+        $stmt->execute([$name, $familyId]);
         $kidId = $db->lastInsertId();
-        
+
         logAudit($_SESSION['admin_id'], 'create_kid', ['kid_id' => $kidId, 'name' => $name]);
         jsonResponse(true, ['id' => $kidId, 'name' => $name]);
         break;
@@ -262,8 +272,9 @@ try {
             $hasTestColumn = false;
         }
         
+        $familyId = getAdminFamilyId();
         if ($hasTestColumn) {
-            $stmt = $db->query("
+            $stmt = $db->prepare("
                 SELECT u.id, u.kid_name, u.total_points, u.created_at,
                        COALESCE(u.is_test_account, 0) as is_test_account,
                        COUNT(DISTINCT d.id) as device_count,
@@ -271,12 +282,13 @@ try {
                 FROM users u
                 LEFT JOIN devices d ON u.id = d.kid_user_id AND d.paired_at IS NOT NULL
                 LEFT JOIN kid_chores kc ON u.id = kc.kid_user_id
-                WHERE u.role = 'kid'
+                WHERE u.role = 'kid' AND (u.family_id = ? OR u.family_id IS NULL)
                 GROUP BY u.id
                 ORDER BY u.kid_name
             ");
+            $stmt->execute([$familyId]);
         } else {
-            $stmt = $db->query("
+            $stmt = $db->prepare("
                 SELECT u.id, u.kid_name, u.total_points, u.created_at,
                        0 as is_test_account,
                        COUNT(DISTINCT d.id) as device_count,
@@ -284,10 +296,11 @@ try {
                 FROM users u
                 LEFT JOIN devices d ON u.id = d.kid_user_id AND d.paired_at IS NOT NULL
                 LEFT JOIN kid_chores kc ON u.id = kc.kid_user_id
-                WHERE u.role = 'kid'
+                WHERE u.role = 'kid' AND (u.family_id = ? OR u.family_id IS NULL)
                 GROUP BY u.id
                 ORDER BY u.kid_name
             ");
+            $stmt->execute([$familyId]);
         }
         
         jsonResponse(true, $stmt->fetchAll());
@@ -2331,6 +2344,76 @@ case 'delete_user_avatar':
             'user_id' => $_SESSION['user_id'] ?? 'NOT SET'
         ]);
         break;
+
+    case 'google_auth': {
+        $credential = $input['credential'] ?? '';
+        if (!$credential) { echo json_encode(['ok' => false, 'error' => 'No credential provided']); break; }
+
+        $clientId = getenv('GOOGLE_CLIENT_ID');
+        if (!$clientId) { echo json_encode(['ok' => false, 'error' => 'Google login not configured on this server']); break; }
+
+        // Verify the ID token with Google
+        $url = 'https://oauth2.googleapis.com/tokeninfo?id_token=' . urlencode($credential);
+        $response = @file_get_contents($url);
+        if (!$response) { echo json_encode(['ok' => false, 'error' => 'Could not verify with Google']); break; }
+        $googleUser = json_decode($response, true);
+
+        // Validate audience matches our client ID
+        $aud = $googleUser['aud'] ?? '';
+        if ($aud !== $clientId) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid token audience']);
+            break;
+        }
+
+        $googleSub = $googleUser['sub'];
+        $email     = $googleUser['email'] ?? '';
+        $name      = $googleUser['name']  ?? ($googleUser['given_name'] ?? 'Parent');
+
+        $db = getDb();
+        startSession();
+
+        // Look for existing account by google_sub or matching admin email
+        $stmt = $db->prepare("SELECT * FROM users WHERE google_sub = ? AND role = 'admin' LIMIT 1");
+        $stmt->execute([$googleSub]);
+        $user = $stmt->fetch();
+
+        if (!$user && $email) {
+            $stmt = $db->prepare("SELECT * FROM users WHERE email = ? AND role = 'admin' LIMIT 1");
+            $stmt->execute([$email]);
+            $user = $stmt->fetch();
+        }
+
+        if ($user) {
+            // Existing admin — link google_sub if not set, start session
+            if (!$user['google_sub']) {
+                $db->prepare("UPDATE users SET google_sub = ? WHERE id = ?")
+                   ->execute([$googleSub, $user['id']]);
+            }
+            $_SESSION['admin_id'] = $user['id'];
+            echo json_encode(['ok' => true, 'new_family' => false]);
+        } else {
+            // Brand-new family — create family + admin account
+            $db->prepare("INSERT INTO families (name) VALUES (?)")
+               ->execute([$name . "'s Family"]);
+            $familyId = (int)$db->lastInsertId();
+
+            $placeholderPw = password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT);
+            $db->prepare("INSERT INTO users (email, password_hash, role, kid_name, google_sub, family_id)
+                          VALUES (?, ?, 'admin', ?, ?, ?)")
+               ->execute([$email, $placeholderPw, $name, $googleSub, $familyId]);
+            $userId = (int)$db->lastInsertId();
+
+            $_SESSION['admin_id'] = $userId;
+            echo json_encode(['ok' => true, 'new_family' => true, 'family_id' => $familyId]);
+        }
+        break;
+    }
+
+    case 'get_google_client_id': {
+        $clientId = getenv('GOOGLE_CLIENT_ID') ?: '';
+        echo json_encode(['ok' => true, 'client_id' => $clientId]);
+        break;
+    }
 
     case 'get_game_settings': {
         $db = getDb();

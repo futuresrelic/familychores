@@ -6,7 +6,15 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Family Chores - Admin</title>
+    <title>FamilyChores — Admin Panel</title>
+    <meta name="description" content="Manage your family's chores, approve completions, and set up rewards. FamilyChores admin panel.">
+    <meta property="og:title"       content="FamilyChores — Admin Panel">
+    <meta property="og:description" content="Manage chores, approve tasks, and track your family's progress.">
+    <meta property="og:image"       content="https://chores.futuresrelic.com/assets/admin-icon-512.png">
+    <meta property="og:url"         content="https://chores.futuresrelic.com/admin/">
+    <meta property="og:type"        content="website">
+    <meta name="twitter:card"       content="summary">
+    <meta name="twitter:image"      content="https://chores.futuresrelic.com/assets/admin-icon-512.png">
     
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="/assets/admin-favicon.ico">
@@ -20,6 +28,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Chores Admin">
     <link rel="apple-touch-icon" href="/assets/admin-icon-192.png">
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
     <div id="login-screen" class="screen">
@@ -35,6 +45,18 @@
                 <button type="submit">Login</button>
                 <div id="login-error" class="error-message"></div>
             </form>
+            <!-- Google Sign-In separator -->
+            <div id="google-login-section" style="margin-top:20px; display:none;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+                    <hr style="flex:1; border:none; border-top:1px solid #e2e8f0;">
+                    <span style="color:#a0aec0; font-size:13px; white-space:nowrap;">or sign in with</span>
+                    <hr style="flex:1; border:none; border-top:1px solid #e2e8f0;">
+                </div>
+                <div id="g_id_signin_admin" style="display:flex; justify-content:center;"></div>
+            </div>
+            <p style="margin-top:20px; text-align:center; font-size:14px; color:#718096;">
+                New family? <a href="/join" style="color:#4F46E5; font-weight:600;">Create your account →</a>
+            </p>
         </div>
     </div>
 
@@ -501,6 +523,65 @@
                 })
                 .catch(err => console.log('Service Worker Registration Failed:', err));
         }
+    </script>
+
+    <script>
+    // Google Sign-In for admin login panel
+    (async function initAdminGoogleLogin() {
+        try {
+            const res = await fetch('/api/api.php?action=get_google_client_id');
+            const data = await res.json();
+            const clientId = data.client_id || '';
+            if (!clientId) return;
+
+            const section = document.getElementById('google-login-section');
+            if (section) section.style.display = 'block';
+
+            google.accounts.id.initialize({
+                client_id: clientId,
+                callback: handleAdminGoogleLogin,
+                auto_select: false,
+            });
+
+            google.accounts.id.renderButton(
+                document.getElementById('g_id_signin_admin'),
+                { theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular', width: 280 }
+            );
+        } catch (e) { /* Google not configured, hide the section silently */ }
+    })();
+
+    async function handleAdminGoogleLogin(response) {
+        try {
+            const res = await fetch('/api/api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'google_auth', credential: response.credential }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+                if (data.new_family) {
+                    window.location.href = '/admin/?welcome=new';
+                } else {
+                    window.location.reload();
+                }
+            } else {
+                document.getElementById('login-error').textContent = data.error || 'Google sign-in failed';
+            }
+        } catch (e) {
+            document.getElementById('login-error').textContent = 'Sign-in error: ' + e.message;
+        }
+    }
+
+    // Auto-navigate to Setup Wizard for brand-new families
+    if (window.location.search.includes('welcome=new')) {
+        window.history.replaceState({}, '', '/admin/');
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const wizardBtn = document.querySelector('[data-tab="setup-wizard"]');
+                if (wizardBtn) wizardBtn.click();
+            }, 1000);
+        });
+    }
     </script>
 
     <!-- Admin update notification button -->

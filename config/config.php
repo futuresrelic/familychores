@@ -26,11 +26,29 @@ if (!file_exists(DB_PATH)) {
 }
 
 function runMigrations($db) {
+    // Families table (multi-family support)
+    $db->exec("CREATE TABLE IF NOT EXISTS families (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL DEFAULT 'My Family',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
+
+    // Ensure a default family exists for original users (id=1)
+    $count = $db->query("SELECT COUNT(*) FROM families")->fetchColumn();
+    if ($count == 0) {
+        $db->exec("INSERT INTO families (id, name) VALUES (1, 'Original Family')");
+    }
+
     // Add missing columns to users table
     $cols = array_column($db->query("PRAGMA table_info(users)")->fetchAll(PDO::FETCH_ASSOC), 'name');
     if (!in_array('settings', $cols))         $db->exec("ALTER TABLE users ADD COLUMN settings TEXT");
     if (!in_array('avatar_photo', $cols))     $db->exec("ALTER TABLE users ADD COLUMN avatar_photo BLOB");
     if (!in_array('is_test_account', $cols))  $db->exec("ALTER TABLE users ADD COLUMN is_test_account INTEGER DEFAULT 0");
+    if (!in_array('family_id', $cols))        $db->exec("ALTER TABLE users ADD COLUMN family_id INTEGER DEFAULT 1");
+    if (!in_array('google_sub', $cols))       $db->exec("ALTER TABLE users ADD COLUMN google_sub TEXT");
+
+    // Assign all existing users to family 1 if they have no family_id
+    $db->exec("UPDATE users SET family_id = 1 WHERE family_id IS NULL");
 
     // Add missing columns to rewards table
     $rewCols = array_column($db->query("PRAGMA table_info(rewards)")->fetchAll(PDO::FETCH_ASSOC), 'name');
