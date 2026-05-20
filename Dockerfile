@@ -16,7 +16,8 @@ RUN rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-enabled/mpm_wo
     && a2enmod mpm_prefork
 
 # Enable Apache modules
-RUN a2enmod rewrite headers expires
+RUN a2enmod rewrite headers expires \
+    && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 
 # Optimize PHP for production
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" && \

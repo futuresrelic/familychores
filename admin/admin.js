@@ -380,13 +380,27 @@ async function loadPairingCodes() {
         const html = result.data.map(code => `
             <div class="list-item">
                 <div class="list-item-info">
-                    <h4>Code: ${code.pairing_code}</h4>
+                    <h4>Code: <span style="font-family:monospace;letter-spacing:2px">${code.pairing_code}</span>
+                        <button onclick="copyPairingCode('${code.pairing_code}', this)" style="margin-left:10px;padding:2px 10px;font-size:12px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:#f5f5f5">Copy</button>
+                    </h4>
                     <p>${code.kid_name} - Waiting to be paired</p>
                 </div>
             </div>
         `).join('');
         document.getElementById('pairing-codes-list').innerHTML = html || '<p>No pending pairing codes</p>';
     }
+}
+
+function copyPairingCode(code, btn) {
+    navigator.clipboard.writeText(code).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.style.background = '#d4edda';
+        btn.style.borderColor = '#28a745';
+        setTimeout(() => { btn.textContent = orig; btn.style.background = '#f5f5f5'; btn.style.borderColor = '#ccc'; }, 2000);
+    }).catch(() => {
+        prompt('Copy this code:', code);
+    });
 }
 
 async function loadDevices() {
