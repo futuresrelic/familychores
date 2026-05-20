@@ -52,10 +52,20 @@ function runMigrations($db) {
 
     // Add missing columns to rewards table
     $rewCols = array_column($db->query("PRAGMA table_info(rewards)")->fetchAll(PDO::FETCH_ASSOC), 'name');
-    if (!in_array('created_by', $rewCols))    $db->exec("ALTER TABLE rewards ADD COLUMN created_by INTEGER");
+    if (!in_array('created_by', $rewCols))  $db->exec("ALTER TABLE rewards ADD COLUMN created_by INTEGER");
+    if (!in_array('family_id', $rewCols))   $db->exec("ALTER TABLE rewards ADD COLUMN family_id INTEGER DEFAULT 1");
+    $db->exec("UPDATE rewards SET family_id = 1 WHERE family_id IS NULL");
+
+    // Add family_id to chores and quests tables
+    $choreCols = array_column($db->query("PRAGMA table_info(chores)")->fetchAll(PDO::FETCH_ASSOC), 'name');
+    if (!in_array('family_id', $choreCols)) $db->exec("ALTER TABLE chores ADD COLUMN family_id INTEGER DEFAULT 1");
+    $db->exec("UPDATE chores SET family_id = 1 WHERE family_id IS NULL");
+
+    $questCols = array_column($db->query("PRAGMA table_info(quests)")->fetchAll(PDO::FETCH_ASSOC), 'name');
+    if (!in_array('family_id', $questCols)) $db->exec("ALTER TABLE quests ADD COLUMN family_id INTEGER DEFAULT 1");
+    $db->exec("UPDATE quests SET family_id = 1 WHERE family_id IS NULL");
 
     // Migrate chores table: add recurrence_type if it only has the old is_recurring/frequency columns
-    $choreCols = array_column($db->query("PRAGMA table_info(chores)")->fetchAll(PDO::FETCH_ASSOC), 'name');
     if (!in_array('recurrence_type', $choreCols)) {
         $db->exec("ALTER TABLE chores ADD COLUMN recurrence_type TEXT NOT NULL DEFAULT 'daily'");
         if (in_array('frequency', $choreCols)) {

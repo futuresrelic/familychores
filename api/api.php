@@ -86,9 +86,9 @@ function getKidFromToken() {
     
     $db = getDb();
     $stmt = $db->prepare("
-        SELECT d.kid_user_id, u.kid_name, u.total_points 
-        FROM devices d 
-        JOIN users u ON d.kid_user_id = u.id 
+        SELECT d.kid_user_id, u.kid_name, u.total_points, u.family_id
+        FROM devices d
+        JOIN users u ON d.kid_user_id = u.id
         WHERE d.device_token = ? AND d.paired_at IS NOT NULL
     ");
     $stmt->execute([$token]);
@@ -308,15 +308,12 @@ try {
 
     case 'delete_kid':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $kidId = intval($input['kid_id'] ?? 0);
-        if (!$kidId) {
-            jsonResponse(false, null, 'Kid ID required');
-        }
-        
+        if (!$kidId) jsonResponse(false, null, 'Kid ID required');
         $db = getDb();
-        $stmt = $db->prepare("DELETE FROM users WHERE id = ? AND role = 'kid'");
-        $stmt->execute([$kidId]);
+        $stmt = $db->prepare("DELETE FROM users WHERE id = ? AND role = 'kid' AND family_id = ?");
+        $stmt->execute([$kidId, $familyId]);
         
         logAudit($_SESSION['admin_id'], 'delete_kid', ['kid_id' => $kidId]);
         jsonResponse(true, ['message' => 'Kid deleted']);
@@ -449,102 +446,91 @@ try {
     
     case 'list_pairing_codes':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $db = getDb();
-        $stmt = $db->query("
+        $stmt = $db->prepare("
             SELECT d.id, d.pairing_code, d.device_label, d.paired_at, u.kid_name, u.id as kid_id
             FROM devices d
             JOIN users u ON d.kid_user_id = u.id
-            WHERE d.paired_at IS NULL
+            WHERE d.paired_at IS NULL AND u.family_id = ?
             ORDER BY d.id DESC
         ");
-        
+        $stmt->execute([$familyId]);
         jsonResponse(true, $stmt->fetchAll());
         break;
-    
+
     case 'list_devices':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $db = getDb();
-        $stmt = $db->query("
+        $stmt = $db->prepare("
             SELECT d.id, d.device_label, d.paired_at, d.last_seen_at, u.kid_name, u.id as kid_id
             FROM devices d
             JOIN users u ON d.kid_user_id = u.id
-            WHERE d.paired_at IS NOT NULL
+            WHERE d.paired_at IS NOT NULL AND u.family_id = ?
             ORDER BY d.last_seen_at DESC
         ");
-        
+        $stmt->execute([$familyId]);
         jsonResponse(true, $stmt->fetchAll());
         break;
-    
+
     case 'revoke_device':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $deviceId = intval($input['device_id'] ?? 0);
-        if (!$deviceId) {
-            jsonResponse(false, null, 'Device ID required');
-        }
-        
+        if (!$deviceId) jsonResponse(false, null, 'Device ID required');
         $db = getDb();
-        $stmt = $db->prepare("DELETE FROM devices WHERE id = ?");
-        $stmt->execute([$deviceId]);
-        
+        // Verify device belongs to this family before revoking
+        $check = $db->prepare("SELECT d.id FROM devices d JOIN users u ON d.kid_user_id = u.id WHERE d.id = ? AND u.family_id = ?");
+        $check->execute([$deviceId, $familyId]);
+        if (!$check->fetch()) jsonResponse(false, null, 'Device not found');
+        $db->prepare("DELETE FROM devices WHERE id = ?")->execute([$deviceId]);
         logAudit($_SESSION['admin_id'], 'revoke_device', ['device_id' => $deviceId]);
         jsonResponse(true, ['message' => 'Device revoked']);
         break;
-    
+
     case 'clear_unpaired_codes':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $db = getDb();
-        // Delete all devices that have never been paired
-        $stmt = $db->prepare("DELETE FROM devices WHERE paired_at IS NULL");
-        $stmt->execute();
+        $stmt = $db->prepare("
+            DELETE FROM devices WHERE id IN (
+                SELECT d.id FROM devices d
+                JOIN users u ON d.kid_user_id = u.id
+                WHERE d.paired_at IS NULL AND u.family_id = ?
+            )
+        ");
+        $stmt->execute([$familyId]);
         $deletedCount = $stmt->rowCount();
-        
         logAudit($_SESSION['admin_id'], 'clear_unpaired_codes', ['deleted_count' => $deletedCount]);
         jsonResponse(true, ['message' => "Cleared $deletedCount unpaired code(s)", 'count' => $deletedCount]);
         break;
 
     case 'clear_stale_devices':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $daysInactive = intval($input['days'] ?? 30);
         if ($daysInactive < 1) $daysInactive = 30;
-        
         $db = getDb();
-        
-        // First, get the list of devices to be deleted (for logging)
         $stmt = $db->prepare("
             SELECT d.id, d.device_label, u.kid_name, d.last_seen_at
-            FROM devices d
-            JOIN users u ON d.kid_user_id = u.id
-            WHERE d.paired_at IS NOT NULL 
+            FROM devices d JOIN users u ON d.kid_user_id = u.id
+            WHERE d.paired_at IS NOT NULL AND u.family_id = ?
             AND (d.last_seen_at IS NULL OR d.last_seen_at < datetime('now', '-' || ? || ' days'))
         ");
-        $stmt->execute([$daysInactive]);
+        $stmt->execute([$familyId, $daysInactive]);
         $staleDevices = $stmt->fetchAll();
-        
-        // Delete them
         $stmt = $db->prepare("
-            DELETE FROM devices 
-            WHERE paired_at IS NOT NULL 
-            AND (last_seen_at IS NULL OR last_seen_at < datetime('now', '-' || ? || ' days'))
+            DELETE FROM devices WHERE id IN (
+                SELECT d.id FROM devices d JOIN users u ON d.kid_user_id = u.id
+                WHERE d.paired_at IS NOT NULL AND u.family_id = ?
+                AND (d.last_seen_at IS NULL OR d.last_seen_at < datetime('now', '-' || ? || ' days'))
+            )
         ");
-        $stmt->execute([$daysInactive]);
+        $stmt->execute([$familyId, $daysInactive]);
         $deletedCount = $stmt->rowCount();
-        
-        logAudit($_SESSION['admin_id'], 'clear_stale_devices', [
-            'days' => $daysInactive,
-            'deleted_count' => $deletedCount,
-            'devices' => $staleDevices
-        ]);
-        
-        jsonResponse(true, [
-            'message' => "Cleared $deletedCount stale device(s)",
-            'count' => $deletedCount,
-            'devices' => $staleDevices
-        ]);
+        logAudit($_SESSION['admin_id'], 'clear_stale_devices', ['days' => $daysInactive, 'deleted_count' => $deletedCount, 'devices' => $staleDevices]);
+        jsonResponse(true, ['message' => "Cleared $deletedCount stale device(s)", 'count' => $deletedCount, 'devices' => $staleDevices]);
         break;
         
     case 'pair_device':
@@ -609,12 +595,13 @@ case 'create_chore':
         jsonResponse(false, null, 'Title is required');
     }
     
+    $familyId = getAdminFamilyId();
     $db = getDb();
     $stmt = $db->prepare("
-        INSERT INTO chores (title, description, recurrence_type, default_points, requires_approval, created_by)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO chores (family_id, title, description, recurrence_type, default_points, requires_approval, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     ");
-    $stmt->execute([$title, $description, $recurrenceType, $defaultPoints, $requiresApproval, $_SESSION['admin_id']]);
+    $stmt->execute([$familyId, $title, $description, $recurrenceType, $defaultPoints, $requiresApproval, $_SESSION['admin_id']]);
     $choreId = $db->lastInsertId();
     
     logAudit($_SESSION['admin_id'], 'create_chore', ['chore_id' => $choreId, 'title' => $title]);
@@ -623,31 +610,29 @@ case 'create_chore':
         
     case 'list_chores':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $db = getDb();
-        $stmt = $db->query("
-            SELECT c.*, 
+        $stmt = $db->prepare("
+            SELECT c.*,
                    COUNT(DISTINCT kc.kid_user_id) as assigned_count
             FROM chores c
             LEFT JOIN kid_chores kc ON c.id = kc.chore_id
+            WHERE c.family_id = ?
             GROUP BY c.id
             ORDER BY c.created_at DESC
         ");
-        
+        $stmt->execute([$familyId]);
         jsonResponse(true, $stmt->fetchAll());
         break;
-    
+
     case 'delete_chore':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $choreId = intval($input['chore_id'] ?? 0);
-        if (!$choreId) {
-            jsonResponse(false, null, 'Chore ID required');
-        }
-        
+        if (!$choreId) jsonResponse(false, null, 'Chore ID required');
         $db = getDb();
-        $stmt = $db->prepare("DELETE FROM chores WHERE id = ?");
-        $stmt->execute([$choreId]);
+        $stmt = $db->prepare("DELETE FROM chores WHERE id = ? AND family_id = ?");
+        $stmt->execute([$choreId, $familyId]);
         
         logAudit($_SESSION['admin_id'], 'delete_chore', ['chore_id' => $choreId]);
         jsonResponse(true, ['message' => 'Chore deleted']);
@@ -671,13 +656,14 @@ case 'create_chore':
         jsonResponse(false, null, 'Title is required');
     }
     
+    $familyId = getAdminFamilyId();
     $db = getDb();
     $stmt = $db->prepare("
-        UPDATE chores 
+        UPDATE chores
         SET title = ?, description = ?, recurrence_type = ?, default_points = ?, requires_approval = ?
-        WHERE id = ?
+        WHERE id = ? AND family_id = ?
     ");
-    $stmt->execute([$title, $description, $recurrenceType, $defaultPoints, $requiresApproval, $choreId]);
+    $stmt->execute([$title, $description, $recurrenceType, $defaultPoints, $requiresApproval, $choreId, $familyId]);
     
     logAudit($_SESSION['admin_id'], 'update_chore', ['chore_id' => $choreId, 'title' => $title]);
     jsonResponse(true, ['message' => 'Chore updated']);
@@ -853,16 +839,17 @@ case 'approve_submission':
             jsonResponse(false, null, 'Submission ID required');
         }
         
+        $familyId = getAdminFamilyId();
         $db = getDb();
         $stmt = $db->prepare("
             SELECT s.*, c.recurrence_type, c.default_points
             FROM submissions s
             JOIN chores c ON s.chore_id = c.id
-            WHERE s.id = ?
+            JOIN users u ON s.kid_user_id = u.id
+            WHERE s.id = ? AND u.family_id = ?
         ");
-        $stmt->execute([$submissionId]);
+        $stmt->execute([$submissionId, $familyId]);
         $submission = $stmt->fetch();
-        
         if (!$submission) {
             jsonResponse(false, null, 'Submission not found');
         }
@@ -894,24 +881,20 @@ case 'approve_submission':
     
     case 'list_submissions':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $status = $input['status'] ?? 'pending';
-        if (!in_array($status, ['pending', 'approved', 'rejected'])) {
-            $status = 'pending';
-        }
-        
+        if (!in_array($status, ['pending', 'approved', 'rejected'])) $status = 'pending';
         $db = getDb();
         $stmt = $db->prepare("
             SELECT s.*, u.kid_name, c.title as chore_title
             FROM submissions s
             JOIN users u ON s.kid_user_id = u.id
             JOIN chores c ON s.chore_id = c.id
-            WHERE s.status = ?
+            WHERE s.status = ? AND u.family_id = ?
             ORDER BY s.submitted_at DESC
             LIMIT 100
         ");
-        $stmt->execute([$status]);
-        
+        $stmt->execute([$status, $familyId]);
         jsonResponse(true, $stmt->fetchAll());
         break;
     
@@ -927,15 +910,17 @@ case 'approve_submission':
             jsonResponse(false, null, 'Valid submission ID and status required');
         }
         
+        $familyId = getAdminFamilyId();
         $db = getDb();
         $stmt = $db->prepare("
             SELECT s.*, c.default_points, c.recurrence_type, kc.streak_count
             FROM submissions s
             JOIN chores c ON s.chore_id = c.id
+            JOIN users u ON s.kid_user_id = u.id
             LEFT JOIN kid_chores kc ON s.kid_user_id = kc.kid_user_id AND s.chore_id = kc.chore_id
-            WHERE s.id = ? AND s.status = 'pending'
+            WHERE s.id = ? AND s.status = 'pending' AND u.family_id = ?
         ");
-        $stmt->execute([$submissionId]);
+        $stmt->execute([$submissionId, $familyId]);
         $submission = $stmt->fetch();
         
         if (!$submission) {
@@ -989,12 +974,13 @@ case 'approve_submission':
             jsonResponse(false, null, 'Title is required');
         }
         
+        $familyId = getAdminFamilyId();
         $db = getDb();
         $stmt = $db->prepare("
-            INSERT INTO quests (title, description, target_reward, created_by) 
-            VALUES (?, ?, ?, ?)
+            INSERT INTO quests (family_id, title, description, target_reward, created_by)
+            VALUES (?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$title, $description, $targetReward, $_SESSION['admin_id']]);
+        $stmt->execute([$familyId, $title, $description, $targetReward, $_SESSION['admin_id']]);
         $questId = $db->lastInsertId();
         
         logAudit($_SESSION['admin_id'], 'create_quest', ['quest_id' => $questId, 'title' => $title]);
@@ -1003,40 +989,41 @@ case 'approve_submission':
     
     case 'list_quests':
         $db = getDb();
-        
         if (isset($_SESSION['admin_id'])) {
-            $stmt = $db->query("
+            $familyId = getAdminFamilyId();
+            $stmt = $db->prepare("
                 SELECT q.*, COUNT(qt.id) as task_count
                 FROM quests q
                 LEFT JOIN quest_tasks qt ON q.id = qt.quest_id
+                WHERE q.family_id = ?
                 GROUP BY q.id
                 ORDER BY q.is_active DESC, q.created_at DESC
             ");
+            $stmt->execute([$familyId]);
         } else {
-            $stmt = $db->query("
+            $kid = getKidFromToken();
+            $familyId = $kid ? (int)$kid['family_id'] : 1;
+            $stmt = $db->prepare("
                 SELECT q.*, COUNT(qt.id) as task_count
                 FROM quests q
                 LEFT JOIN quest_tasks qt ON q.id = qt.quest_id
-                WHERE q.is_active = 1
+                WHERE q.is_active = 1 AND q.family_id = ?
                 GROUP BY q.id
                 ORDER BY q.created_at DESC
             ");
+            $stmt->execute([$familyId]);
         }
-        
         jsonResponse(true, $stmt->fetchAll());
         break;
-    
+
     case 'toggle_quest':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $questId = intval($input['quest_id'] ?? 0);
-        if (!$questId) {
-            jsonResponse(false, null, 'Quest ID required');
-        }
-        
+        if (!$questId) jsonResponse(false, null, 'Quest ID required');
         $db = getDb();
-        $stmt = $db->prepare("UPDATE quests SET is_active = 1 - is_active WHERE id = ?");
-        $stmt->execute([$questId]);
+        $stmt = $db->prepare("UPDATE quests SET is_active = 1 - is_active WHERE id = ? AND family_id = ?");
+        $stmt->execute([$questId, $familyId]);
         
         logAudit($_SESSION['admin_id'], 'toggle_quest', ['quest_id' => $questId]);
         jsonResponse(true, ['message' => 'Quest toggled']);
@@ -1499,12 +1486,13 @@ case 'get_leaderboard':
             jsonResponse(false, null, 'Title is required');
         }
     
+        $familyId = getAdminFamilyId();
         $db = getDb();
         $stmt = $db->prepare("
-            INSERT INTO rewards (title, description, cost_points, created_by) 
-            VALUES (?, ?, ?, ?)
+            INSERT INTO rewards (family_id, title, description, cost_points, created_by)
+            VALUES (?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$title, $description, $costPoints, $admin['user_id']]);
+        $stmt->execute([$familyId, $title, $description, $costPoints, $admin['user_id']]);
         $rewardId = $db->lastInsertId();
     
         logAudit($admin['user_id'], 'create_reward', ['reward_id' => $rewardId]);
@@ -1513,71 +1501,61 @@ case 'get_leaderboard':
     
     case 'list_rewards':
     $db = getDb();
-
     if (isset($_SESSION['admin_id'])) {
-        // Admin can see all rewards (active and inactive)
-        $stmt = $db->query("
-            SELECT r.*, 
-                   COALESCE(r.is_active, 1) as is_active,
-                   COALESCE(r.created_by, 1) as created_by
-            FROM rewards r 
+        $familyId = getAdminFamilyId();
+        $stmt = $db->prepare("
+            SELECT r.*, COALESCE(r.is_active, 1) as is_active, COALESCE(r.created_by, 1) as created_by
+            FROM rewards r
+            WHERE r.family_id = ?
             ORDER BY r.is_active DESC, r.cost_points
         ");
+        $stmt->execute([$familyId]);
     } else {
-        // Kids can only see active rewards
-        $stmt = $db->query("
-            SELECT r.*,
-                COALESCE(r.is_active, 1) as is_active
-            FROM rewards r 
-            WHERE COALESCE(r.is_active, 1) = 1 
+        $kid = getKidFromToken();
+        $familyId = $kid ? (int)$kid['family_id'] : 1;
+        $stmt = $db->prepare("
+            SELECT r.*, COALESCE(r.is_active, 1) as is_active
+            FROM rewards r
+            WHERE COALESCE(r.is_active, 1) = 1 AND r.family_id = ?
             ORDER BY r.cost_points
         ");
+        $stmt->execute([$familyId]);
     }
-
     jsonResponse(true, $stmt->fetchAll());
     break;
-    
+
     case 'toggle_reward':
         requireAdmin();
-
+        $familyId = getAdminFamilyId();
         $rewardId = intval($input['reward_id'] ?? 0);
         if (!$rewardId) jsonResponse(false, null, 'Reward ID required');
-
         $db = getDb();
-        $stmt = $db->prepare("UPDATE rewards SET is_active = 1 - is_active WHERE id = ?");
-        $stmt->execute([$rewardId]);
-
+        $db->prepare("UPDATE rewards SET is_active = 1 - is_active WHERE id = ? AND family_id = ?")->execute([$rewardId, $familyId]);
         logAudit($_SESSION['admin_id'], 'toggle_reward', ['reward_id' => $rewardId]);
         jsonResponse(true, ['message' => 'Reward toggled']);
         break;
 
     case 'update_reward':
         requireAdmin();
-
-        $rewardId = intval($input['reward_id'] ?? 0);
+        $familyId    = getAdminFamilyId();
+        $rewardId    = intval($input['reward_id'] ?? 0);
         $title       = sanitize($input['title']       ?? '', 200);
         $description = sanitize($input['description'] ?? '', 1000);
         $costPoints  = intval($input['cost_points']   ?? 0);
-
         if (!$rewardId || !$title) jsonResponse(false, null, 'ID and title required');
-
         $db = getDb();
-        $stmt = $db->prepare("UPDATE rewards SET title = ?, description = ?, cost_points = ? WHERE id = ?");
-        $stmt->execute([$title, $description, $costPoints, $rewardId]);
-
+        $db->prepare("UPDATE rewards SET title = ?, description = ?, cost_points = ? WHERE id = ? AND family_id = ?")->execute([$title, $description, $costPoints, $rewardId, $familyId]);
         logAudit($_SESSION['admin_id'], 'update_reward', ['reward_id' => $rewardId]);
         jsonResponse(true, ['message' => 'Reward updated']);
         break;
 
     case 'delete_reward':
         requireAdmin();
-
+        $familyId = getAdminFamilyId();
         $rewardId = intval($input['reward_id'] ?? 0);
         if (!$rewardId) jsonResponse(false, null, 'Reward ID required');
-
         $db = getDb();
-        $db->prepare("DELETE FROM rewards WHERE id = ?")->execute([$rewardId]);
-
+        $db->prepare("DELETE FROM rewards WHERE id = ? AND family_id = ?")->execute([$rewardId, $familyId]);
         logAudit($_SESSION['admin_id'], 'delete_reward', ['reward_id' => $rewardId]);
         jsonResponse(true, ['message' => 'Reward deleted']);
         break;
@@ -1615,45 +1593,39 @@ case 'get_leaderboard':
     
     case 'list_redemptions':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $status = $input['status'] ?? 'pending';
-        if (!in_array($status, ['pending', 'approved', 'rejected'])) {
-            $status = 'pending';
-        }
-        
+        if (!in_array($status, ['pending', 'approved', 'rejected'])) $status = 'pending';
         $db = getDb();
         $stmt = $db->prepare("
             SELECT r.*, u.kid_name, rw.title as reward_title, rw.cost_points
             FROM redemptions r
             JOIN users u ON r.kid_user_id = u.id
             JOIN rewards rw ON r.reward_id = rw.id
-            WHERE r.status = ?
+            WHERE r.status = ? AND u.family_id = ?
             ORDER BY r.requested_at DESC
         ");
-        $stmt->execute([$status]);
-        
+        $stmt->execute([$status, $familyId]);
         jsonResponse(true, $stmt->fetchAll());
         break;
-    
+
     case 'review_redemption':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $redemptionId = intval($input['redemption_id'] ?? 0);
         $status = $input['status'] ?? '';
-        
         if (!$redemptionId || !in_array($status, ['approved', 'rejected'])) {
             jsonResponse(false, null, 'Valid redemption ID and status required');
         }
-        
         $db = getDb();
         $stmt = $db->prepare("
             SELECT r.*, rw.cost_points, u.total_points
             FROM redemptions r
             JOIN rewards rw ON r.reward_id = rw.id
             JOIN users u ON r.kid_user_id = u.id
-            WHERE r.id = ? AND r.status = 'pending'
+            WHERE r.id = ? AND r.status = 'pending' AND u.family_id = ?
         ");
-        $stmt->execute([$redemptionId]);
+        $stmt->execute([$redemptionId, $familyId]);
         $redemption = $stmt->fetch();
         
         if (!$redemption) {
@@ -1737,35 +1709,28 @@ case 'kid_feed':
         
     case 'stats_overview':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $db = getDb();
-        
-        $pendingSubmissions = $db->query("SELECT COUNT(*) as count FROM submissions WHERE status = 'pending'")->fetch()['count'];
-        $pendingRedemptions = $db->query("SELECT COUNT(*) as count FROM redemptions WHERE status = 'pending'")->fetch()['count'];
-        $pendingQuests = $db->query("SELECT COUNT(*) as count FROM kid_quest_task_status WHERE status = 'pending'")->fetch()['count'];
-        
-        $todayCompletions = $db->query("
-            SELECT COUNT(*) as count FROM submissions 
-            WHERE DATE(submitted_at) = DATE('now')
-        ")->fetch()['count'];
-        
-        $streakLeaders = $db->query("
+
+        $ps = $db->prepare("SELECT COUNT(*) as c FROM submissions s JOIN users u ON s.kid_user_id = u.id WHERE s.status='pending' AND u.family_id=?"); $ps->execute([$familyId]);
+        $pendingSubmissions = $ps->fetch()['c'];
+        $pr = $db->prepare("SELECT COUNT(*) as c FROM redemptions r JOIN users u ON r.kid_user_id = u.id WHERE r.status='pending' AND u.family_id=?"); $pr->execute([$familyId]);
+        $pendingRedemptions = $pr->fetch()['c'];
+        $pq = $db->prepare("SELECT COUNT(*) as c FROM kid_quest_task_status kq JOIN users u ON kq.kid_user_id = u.id WHERE kq.status='pending' AND u.family_id=?"); $pq->execute([$familyId]);
+        $pendingQuests = $pq->fetch()['c'];
+        $tc = $db->prepare("SELECT COUNT(*) as c FROM submissions s JOIN users u ON s.kid_user_id = u.id WHERE DATE(s.submitted_at)=DATE('now') AND u.family_id=?"); $tc->execute([$familyId]);
+        $todayCompletions = $tc->fetch()['c'];
+
+        $sl = $db->prepare("
             SELECT u.kid_name, c.title as chore_title, kc.streak_count
-            FROM kid_chores kc
-            JOIN users u ON kc.kid_user_id = u.id
-            JOIN chores c ON kc.chore_id = c.id
-            WHERE kc.streak_count > 0
-            ORDER BY kc.streak_count DESC
-            LIMIT 5
-        ")->fetchAll();
-        
-        $pointsLeaders = $db->query("
-            SELECT kid_name, total_points
-            FROM users
-            WHERE role = 'kid'
-            ORDER BY total_points DESC
-            LIMIT 5
-        ")->fetchAll();
+            FROM kid_chores kc JOIN users u ON kc.kid_user_id = u.id JOIN chores c ON kc.chore_id = c.id
+            WHERE kc.streak_count > 0 AND u.family_id = ?
+            ORDER BY kc.streak_count DESC LIMIT 5
+        "); $sl->execute([$familyId]);
+        $streakLeaders = $sl->fetchAll();
+
+        $pl = $db->prepare("SELECT kid_name, total_points FROM users WHERE role='kid' AND family_id=? ORDER BY total_points DESC LIMIT 5"); $pl->execute([$familyId]);
+        $pointsLeaders = $pl->fetchAll();
         
         jsonResponse(true, [
             'pending_submissions' => $pendingSubmissions,
@@ -1779,83 +1744,60 @@ case 'kid_feed':
     
     case 'family_analytics':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $db = getDb();
-        
-        // Check if test column exists
-        try {
-            $db->query("SELECT is_test_account FROM users LIMIT 1");
-            $testFilter = "AND COALESCE(u.is_test_account, 0) = 0";
-        } catch (Exception $e) {
-            $testFilter = "";
-        }
-        
-        // Get point earnings by kid over last 30 days (exclude test accounts)
-        $stmt = $db->query("
-            SELECT 
-                u.kid_name,
-                u.id as kid_id,
-                u.total_points,
-                DATE(s.reviewed_at) as date,
-                SUM(s.points_awarded) as daily_points
+
+        $stmt = $db->prepare("
+            SELECT u.kid_name, u.id as kid_id, u.total_points,
+                DATE(s.reviewed_at) as date, SUM(s.points_awarded) as daily_points
             FROM submissions s
             JOIN users u ON s.kid_user_id = u.id
-            WHERE s.status = 'approved' 
+            WHERE s.status = 'approved'
             AND s.reviewed_at >= date('now', '-30 days')
-            $testFilter
+            AND u.family_id = ?
+            AND COALESCE(u.is_test_account, 0) = 0
             GROUP BY u.id, DATE(s.reviewed_at)
             ORDER BY date DESC
         ");
+        $stmt->execute([$familyId]);
         $dailyEarnings = $stmt->fetchAll();
-        
-        // Get total points earned by kid (all time, exclude test accounts)
-        $stmt = $db->query("
-            SELECT 
-                u.kid_name,
-                u.id as kid_id,
-                u.total_points,
+
+        $stmt = $db->prepare("
+            SELECT u.kid_name, u.id as kid_id, u.total_points,
                 COALESCE(SUM(s.points_awarded), 0) as total_earned,
                 COALESCE(SUM(CASE WHEN s.reviewed_at >= date('now', '-7 days') THEN s.points_awarded ELSE 0 END), 0) as week_earned,
                 COALESCE(SUM(CASE WHEN s.reviewed_at >= date('now', '-30 days') THEN s.points_awarded ELSE 0 END), 0) as month_earned
             FROM users u
             LEFT JOIN submissions s ON u.id = s.kid_user_id AND s.status = 'approved'
-            WHERE u.role = 'kid' $testFilter
-            GROUP BY u.id
-            ORDER BY u.kid_name
+            WHERE u.role = 'kid' AND u.family_id = ? AND COALESCE(u.is_test_account, 0) = 0
+            GROUP BY u.id ORDER BY u.kid_name
         ");
+        $stmt->execute([$familyId]);
         $kidStats = $stmt->fetchAll();
-        
-        // Get redemption history (exclude test accounts)
-        $stmt = $db->query("
-            SELECT 
-                u.kid_name,
-                r.title as reward_title,
-                r.cost_points,
-                rd.requested_at,
-                rd.status
+
+        $stmt = $db->prepare("
+            SELECT u.kid_name, r.title as reward_title, r.cost_points, rd.requested_at, rd.status
             FROM redemptions rd
             JOIN users u ON rd.kid_user_id = u.id
             JOIN rewards r ON rd.reward_id = r.id
             WHERE rd.requested_at >= date('now', '-30 days')
-            $testFilter
+            AND u.family_id = ?
+            AND COALESCE(u.is_test_account, 0) = 0
             ORDER BY rd.requested_at DESC
         ");
+        $stmt->execute([$familyId]);
         $recentRedemptions = $stmt->fetchAll();
-        
-        // Get quest completion data (no need to filter - shows all)
-        $stmt = $db->query("
-            SELECT 
-                q.title as quest_title,
-                qt.title as task_title,
-                qt.points as task_points,
+
+        $stmt = $db->prepare("
+            SELECT q.title as quest_title, qt.title as task_title, qt.points as task_points,
                 COUNT(CASE WHEN kqts.status = 'approved' THEN 1 END) as completions
             FROM quests q
             JOIN quest_tasks qt ON q.id = qt.quest_id
             LEFT JOIN kid_quest_task_status kqts ON qt.id = kqts.quest_task_id
-            WHERE q.is_active = 1
-            GROUP BY qt.id
-            ORDER BY q.id, qt.order_index
+            WHERE q.is_active = 1 AND q.family_id = ?
+            GROUP BY qt.id ORDER BY q.id, qt.order_index
         ");
+        $stmt->execute([$familyId]);
         $questData = $stmt->fetchAll();
         
         jsonResponse(true, [
@@ -1868,40 +1810,26 @@ case 'kid_feed':
 
     case 'point_economics':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $db = getDb();
-        
-        // Get all active chores with their point values
-        $stmt = $db->query("
-            SELECT 
-                c.id,
-                c.title,
-                c.recurrence_type,
-                c.default_points,
+
+        $stmt = $db->prepare("
+            SELECT c.id, c.title, c.recurrence_type, c.default_points,
                 COUNT(kc.id) as assigned_count
             FROM chores c
             LEFT JOIN kid_chores kc ON c.id = kc.chore_id
-            GROUP BY c.id
-            ORDER BY c.default_points DESC
+            WHERE c.family_id = ?
+            GROUP BY c.id ORDER BY c.default_points DESC
         ");
+        $stmt->execute([$familyId]);
         $chores = $stmt->fetchAll();
-        
-        // Get all active rewards
-        $stmt = $db->query("
-            SELECT id, title, cost_points
-            FROM rewards
-            WHERE is_active = 1
-            ORDER BY cost_points ASC
-        ");
+
+        $stmt = $db->prepare("SELECT id, title, cost_points FROM rewards WHERE is_active = 1 AND family_id = ? ORDER BY cost_points ASC");
+        $stmt->execute([$familyId]);
         $rewards = $stmt->fetchAll();
-        
-        // Get kids count for projections
-        $stmt = $db->query("
-            SELECT COUNT(*) as kid_count
-            FROM users
-            WHERE role = 'kid'
-            AND COALESCE(is_test_account, 0) = 0
-        ");
+
+        $stmt = $db->prepare("SELECT COUNT(*) as kid_count FROM users WHERE role = 'kid' AND family_id = ? AND COALESCE(is_test_account, 0) = 0");
+        $stmt->execute([$familyId]);
         $kidCount = $stmt->fetch()['kid_count'];
         
         jsonResponse(true, [
@@ -1913,71 +1841,65 @@ case 'kid_feed':
         
     case 'list_admins':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
         $db = getDb();
-        $stmt = $db->query("
-            SELECT id, email, kid_name as name, created_at 
-            FROM users 
-            WHERE role = 'admin' 
-            ORDER BY created_at DESC
-        ");
-        
+        $stmt = $db->prepare("SELECT id, email, kid_name as name, created_at FROM users WHERE role = 'admin' AND family_id = ? ORDER BY created_at DESC");
+        $stmt->execute([$familyId]);
         jsonResponse(true, $stmt->fetchAll());
         break;
-    
+
     case 'create_admin':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
+
         $email = sanitize($input['email'] ?? '', 100);
         $password = $input['password'] ?? '';
         $name = sanitize($input['name'] ?? '', 100);
-        
+
         if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             jsonResponse(false, null, 'Valid email required');
         }
-        
         if (strlen($password) < 8) {
             jsonResponse(false, null, 'Password must be at least 8 characters');
         }
-        
+
         $db = getDb();
-        
-        // Check if email exists
         $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
         $stmt->execute([$email]);
         if ($stmt->fetch()) {
             jsonResponse(false, null, 'Email already exists');
         }
-        
+
         $hash = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = $db->prepare("INSERT INTO users (role, email, password_hash, kid_name) VALUES ('admin', ?, ?, ?)");
-        $stmt->execute([$email, $hash, $name]);
+        $stmt = $db->prepare("INSERT INTO users (role, email, password_hash, kid_name, family_id) VALUES ('admin', ?, ?, ?, ?)");
+        $stmt->execute([$email, $hash, $name, $familyId]);
         $adminId = $db->lastInsertId();
-        
+
         logAudit($_SESSION['admin_id'], 'create_admin', ['new_admin_id' => $adminId, 'email' => $email]);
         jsonResponse(true, ['id' => $adminId, 'email' => $email]);
         break;
-    
+
     case 'delete_admin':
         requireAdmin();
-        
+        $familyId = getAdminFamilyId();
+
         $adminId = intval($input['admin_id'] ?? 0);
-        
         if ($adminId === $_SESSION['admin_id']) {
             jsonResponse(false, null, 'Cannot delete yourself');
         }
-        
+
         $db = getDb();
-        
-        // Prevent deleting last admin
-        $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");
+
+        // Prevent deleting last admin in this family
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin' AND family_id = ?");
+        $stmt->execute([$familyId]);
         if ($stmt->fetch()['count'] <= 1) {
             jsonResponse(false, null, 'Cannot delete the last admin');
         }
-        
-        $stmt = $db->prepare("DELETE FROM users WHERE id = ? AND role = 'admin'");
-        $stmt->execute([$adminId]);
-        
+
+        $stmt = $db->prepare("DELETE FROM users WHERE id = ? AND role = 'admin' AND family_id = ?");
+        $stmt->execute([$adminId, $familyId]);
+
         logAudit($_SESSION['admin_id'], 'delete_admin', ['deleted_admin_id' => $adminId]);
         jsonResponse(true, ['message' => 'Admin deleted']);
         break;

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS devices (
 -- Chores definition
 CREATE TABLE IF NOT EXISTS chores (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     description TEXT,
     recurrence_type TEXT NOT NULL DEFAULT 'daily' CHECK(recurrence_type IN ('once', 'daily', 'weekly', 'monthly')),
@@ -44,7 +45,8 @@ CREATE TABLE IF NOT EXISTS chores (
     requires_approval INTEGER DEFAULT 1,
     created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id)
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (family_id) REFERENCES families(id)
 );
 
 -- Kid chore assignments
@@ -79,13 +81,15 @@ CREATE TABLE IF NOT EXISTS submissions (
 -- Quests
 CREATE TABLE IF NOT EXISTS quests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     description TEXT,
     target_reward TEXT,
     created_by INTEGER,
     is_active INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id)
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (family_id) REFERENCES families(id)
 );
 
 -- Quest tasks
@@ -127,12 +131,14 @@ CREATE TABLE IF NOT EXISTS kid_quest_task_status (
 -- Rewards
 CREATE TABLE IF NOT EXISTS rewards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     description TEXT,
     cost_points INTEGER DEFAULT 100,
     is_active INTEGER DEFAULT 1,
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (family_id) REFERENCES families(id)
 );
 
 -- Redemptions
