@@ -54,10 +54,19 @@ function isDue(dueDateString) {
     return new Date(dueDateString) <= new Date();
 }
 
+// Auto-fill pairing code from URL (?code=XXXXXX or /kid/?code=XXXXXX)
+(function() {
+    const urlCode = new URLSearchParams(window.location.search).get('code');
+    if (urlCode) {
+        const input = document.getElementById('pairing-code');
+        if (input) input.value = urlCode.toUpperCase().trim();
+    }
+})();
+
 // Pairing
 document.getElementById('pairing-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     const code = document.getElementById('pairing-code').value.toUpperCase().trim();
     const deviceLabel = `${navigator.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop'} Device`;
     
@@ -2517,6 +2526,16 @@ function applyThemeStyling(theme) {
 }
 
 // Save settings to server
+async function saveVoicePads(btn) {
+    const hasAny = voiceRawData.some(function(d) { return d !== null; });
+    if (!hasAny) { alert('Record some voice pads first!'); return; }
+    if (btn) { btn.textContent = '⏳ Saving…'; btn.disabled = true; }
+    const settings = JSON.parse(localStorage.getItem('kid_settings') || '{}');
+    settings.voice_pads = voiceRawData;
+    await saveSettingsToServer(settings);
+    if (btn) { btn.textContent = '✅ Saved!'; setTimeout(function() { btn.textContent = '💾 Save Voices'; btn.disabled = false; }, 2000); }
+}
+
 async function saveSettingsToServer(settings) {
     console.log('💾 Saving settings to server...', settings);
     
@@ -2541,10 +2560,17 @@ async function loadSettingsFromServer() {
     
     if (result.ok && result.settings && Object.keys(result.settings).length > 0) {
         console.log('✅ Settings loaded from server:', result.settings);
-        
+
+        // Load saved voice pad recordings
+        if (Array.isArray(result.settings.voice_pads)) {
+            result.settings.voice_pads.forEach(function(b64, i) {
+                if (b64) voiceRawData[i] = b64;
+            });
+        }
+
         // Merge with localStorage (server is authoritative)
         localStorage.setItem('kid_settings', JSON.stringify(result.settings));
-        
+
         return result.settings;
     } else {
         console.log('📭 No settings on server, using local settings');
@@ -6223,6 +6249,9 @@ function padNatureRustle(ctx) {
     nb.start(now); nb.stop(now + 0.45);
 }
 
+// ---- Voice raw data (base64 WebM) for server save/load ----
+const voiceRawData = new Array(12).fill(null);
+
 // ---- Pad bank definitions ----
 const PAD_BANKS = {
     drums: [
@@ -6292,15 +6321,23 @@ function buildPadsGrid(bank) {
     if (!grid) return;
     const isVoice = bank === 'voice';
     hint.style.display = isVoice ? 'block' : 'none';
+
     const pads = PAD_BANKS[bank];
     grid.innerHTML = pads.map(function(pad, i) {
-        const hasRec = isVoice && voiceRecordings[i];
+        const hasRec = isVoice && (voiceRecordings[i] || voiceRawData[i]);
+        const emoji = hasRec ? '▶️' : pad.emoji;
+        const label = hasRec ? 'Tap to play' : pad.label;
+        const color = pad.color;
+        // Colored glow matches pad color, darker border-bottom for 3D depth
+        const glow = color + '70'; // ~44% opacity hex
         return '<button class="pad-btn" data-pad="'+i+'" data-bank="'+bank+'"'+
-            ' style="background: linear-gradient(135deg, '+pad.color+'dd, '+pad.color+'99);">'+
-            '<span class="pad-emoji">'+(hasRec ? '▶️' : pad.emoji)+'</span>'+
-            '<span class="pad-label">'+pad.label+'</span>'+
+            ' style="background:linear-gradient(145deg,'+color+'ee,'+color+'99);'+
+            'box-shadow:0 6px 22px '+glow+',0 3px 0 rgba(0,0,0,0.25);">'+
+            '<span class="pad-emoji">'+emoji+'</span>'+
+            '<span class="pad-label">'+label+'</span>'+
             '</button>';
     }).join('');
+
     grid.querySelectorAll('.pad-btn').forEach(function(btn) {
         btn.addEventListener('mousedown', function(e) {
             e.preventDefault();
@@ -6311,6 +6348,10 @@ function buildPadsGrid(bank) {
             triggerPad(parseInt(btn.dataset.pad), btn.dataset.bank, btn);
         }, { passive: false });
     });
+
+    // Update save button visibility in voice mode
+    var saveBtn = document.getElementById('pads-save-voice-btn');
+    if (saveBtn) saveBtn.style.display = isVoice ? 'inline-flex' : 'none';
 }
 
 function triggerPad(idx, bank, btn) {
@@ -6336,6 +6377,21 @@ function handleVoicePad(idx, btn) {
         src.start();
         return;
     }
+    // Decode from saved raw data (loaded from server)
+    if (voiceRawData[idx]) {
+        const ctx = getPadsCtx();
+        const binary = atob(voiceRawData[idx]);
+        const bytes = new Uint8Array(binary.length);
+        for (var j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+        ctx.decodeAudioData(bytes.buffer, function(audioBuf) {
+            voiceRecordings[idx] = audioBuf;
+            const src = ctx.createBufferSource();
+            src.buffer = audioBuf;
+            src.connect(ctx.destination);
+            src.start();
+        });
+        return;
+    }
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
         voiceRecordingChunks = [];
         voiceRecorder = new MediaRecorder(stream);
@@ -6352,9 +6408,13 @@ function handleVoicePad(idx, btn) {
             voiceRecordingPad = -1;
             voiceRecorder = null;
             const blob = new Blob(voiceRecordingChunks, { type: 'audio/webm' });
+            // Store base64 for cross-device save
+            var reader = new FileReader();
+            reader.onload = function() { voiceRawData[idx] = reader.result.split(',')[1]; };
+            reader.readAsDataURL(blob);
             blob.arrayBuffer().then(function(arrayBuf) {
                 const ctx = getPadsCtx();
-                ctx.decodeAudioData(arrayBuf, function(audioBuf) {
+                ctx.decodeAudioData(arrayBuf.slice(0), function(audioBuf) {
                     voiceRecordings[idx] = audioBuf;
                     buildPadsGrid('voice');
                 }, function() {

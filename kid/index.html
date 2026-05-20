@@ -374,9 +374,11 @@
             <!-- 12-pad grid — populated by JS -->
             <div id="pads-grid"></div>
 
-            <!-- Voice mode hint -->
+            <!-- Voice mode hint + save button -->
             <div id="pads-voice-hint" style="display:none; margin-top:14px; padding:12px 16px; background:#FEF3C7; border-radius:12px; font-size:13px; color:#92400E; text-align:center; line-height:1.6;">
-                🎤 Tap any empty pad to start recording.<br>Tap again to stop. Then tap to play!
+                🎤 Tap empty pad to record · Tap again to stop · Tap ▶️ to play
+                <br>
+                <button id="pads-save-voice-btn" onclick="saveVoicePads(this)" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;padding:8px 20px;background:#BE185D;color:white;border:none;border-radius:20px;font-weight:700;font-size:13px;cursor:pointer;">💾 Save Voices</button>
             </div>
         </div>
 

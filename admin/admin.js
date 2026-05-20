@@ -377,30 +377,44 @@ async function generatePairingCode(kidId) {
 async function loadPairingCodes() {
     const result = await apiCall('list_pairing_codes');
     if (result.ok) {
-        const html = result.data.map(code => `
+        const html = result.data.map(code => {
+            const shareUrl = window.location.origin + '/kid/?code=' + code.pairing_code;
+            return `
             <div class="list-item">
                 <div class="list-item-info">
-                    <h4>Code: <span style="font-family:monospace;letter-spacing:2px">${code.pairing_code}</span>
-                        <button onclick="copyPairingCode('${code.pairing_code}', this)" style="margin-left:10px;padding:2px 10px;font-size:12px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:#f5f5f5">Copy</button>
-                    </h4>
-                    <p>${code.kid_name} - Waiting to be paired</p>
+                    <h4>${code.kid_name} — Waiting to pair</h4>
+                    <div style="display:flex;align-items:center;gap:10px;margin:8px 0;flex-wrap:wrap;">
+                        <span style="font-family:monospace;font-size:24px;font-weight:700;letter-spacing:4px;background:#F3F4F6;padding:8px 16px;border-radius:10px;border:2px dashed #D1D5DB;">${code.pairing_code}</span>
+                        <button onclick="copyPairingCode('${code.pairing_code}', this)" style="padding:8px 14px;font-size:13px;cursor:pointer;border:2px solid #4F46E5;border-radius:8px;background:#EEF2FF;color:#4F46E5;font-weight:600;">📋 Copy Code</button>
+                        <button onclick="sharePairingLink('${shareUrl}', this)" style="padding:8px 14px;font-size:13px;cursor:pointer;border:2px solid #10B981;border-radius:8px;background:#D1FAE5;color:#065F46;font-weight:600;">🔗 Share Link</button>
+                    </div>
+                    <p style="font-size:12px;color:#9CA3AF;margin:0;">Link: <span style="font-family:monospace;font-size:11px;word-break:break-all;">${shareUrl}</span></p>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
         document.getElementById('pairing-codes-list').innerHTML = html || '<p>No pending pairing codes</p>';
     }
 }
 
 function copyPairingCode(code, btn) {
     navigator.clipboard.writeText(code).then(() => {
-        const orig = btn.textContent;
-        btn.textContent = 'Copied!';
-        btn.style.background = '#d4edda';
-        btn.style.borderColor = '#28a745';
-        setTimeout(() => { btn.textContent = orig; btn.style.background = '#f5f5f5'; btn.style.borderColor = '#ccc'; }, 2000);
-    }).catch(() => {
-        prompt('Copy this code:', code);
-    });
+        const orig = btn.innerHTML;
+        btn.innerHTML = '✅ Copied!';
+        btn.style.background = '#D1FAE5'; btn.style.borderColor = '#10B981'; btn.style.color = '#065F46';
+        setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#EEF2FF'; btn.style.borderColor = '#4F46E5'; btn.style.color = '#4F46E5'; }, 2000);
+    }).catch(() => { prompt('Copy this code:', code); });
+}
+
+function sharePairingLink(url, btn) {
+    if (navigator.share) {
+        navigator.share({ title: 'Family Chores — Pair Your Device', text: 'Tap this link to connect to Family Chores!', url });
+    } else {
+        navigator.clipboard.writeText(url).then(() => {
+            const orig = btn.innerHTML;
+            btn.innerHTML = '✅ Link Copied!';
+            setTimeout(() => { btn.innerHTML = orig; }, 2000);
+        }).catch(() => { prompt('Share this link:', url); });
+    }
 }
 
 async function loadDevices() {
