@@ -1539,18 +1539,47 @@ case 'get_leaderboard':
     
     case 'toggle_reward':
         requireAdmin();
-        
+
         $rewardId = intval($input['reward_id'] ?? 0);
-        if (!$rewardId) {
-            jsonResponse(false, null, 'Reward ID required');
-        }
-        
+        if (!$rewardId) jsonResponse(false, null, 'Reward ID required');
+
         $db = getDb();
         $stmt = $db->prepare("UPDATE rewards SET is_active = 1 - is_active WHERE id = ?");
         $stmt->execute([$rewardId]);
-        
+
         logAudit($_SESSION['admin_id'], 'toggle_reward', ['reward_id' => $rewardId]);
         jsonResponse(true, ['message' => 'Reward toggled']);
+        break;
+
+    case 'update_reward':
+        requireAdmin();
+
+        $rewardId = intval($input['reward_id'] ?? 0);
+        $title       = sanitize($input['title']       ?? '', 200);
+        $description = sanitize($input['description'] ?? '', 1000);
+        $costPoints  = intval($input['cost_points']   ?? 0);
+
+        if (!$rewardId || !$title) jsonResponse(false, null, 'ID and title required');
+
+        $db = getDb();
+        $stmt = $db->prepare("UPDATE rewards SET title = ?, description = ?, cost_points = ? WHERE id = ?");
+        $stmt->execute([$title, $description, $costPoints, $rewardId]);
+
+        logAudit($_SESSION['admin_id'], 'update_reward', ['reward_id' => $rewardId]);
+        jsonResponse(true, ['message' => 'Reward updated']);
+        break;
+
+    case 'delete_reward':
+        requireAdmin();
+
+        $rewardId = intval($input['reward_id'] ?? 0);
+        if (!$rewardId) jsonResponse(false, null, 'Reward ID required');
+
+        $db = getDb();
+        $db->prepare("DELETE FROM rewards WHERE id = ?")->execute([$rewardId]);
+
+        logAudit($_SESSION['admin_id'], 'delete_reward', ['reward_id' => $rewardId]);
+        jsonResponse(true, ['message' => 'Reward deleted']);
         break;
     
     case 'kid_redeem_reward':

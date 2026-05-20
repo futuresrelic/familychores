@@ -1549,10 +1549,58 @@ async function loadRewards() {
                 </div>
                 <div class="list-item-actions">
                     <button class="secondary-btn small-btn" onclick="toggleReward(${reward.id})">${reward.is_active ? 'Deactivate' : 'Activate'}</button>
+                    <button class="secondary-btn small-btn" onclick="editReward(${reward.id})">Edit</button>
+                    <button class="danger-btn small-btn" onclick="deleteReward(${reward.id}, '${reward.title.replace(/'/g, "\\'")}')">Delete</button>
                 </div>
             </div>
         `).join('');
         document.getElementById('rewards-list').innerHTML = html || '<p>No rewards created yet</p>';
+    }
+}
+
+async function editReward(rewardId) {
+    const result = await apiCall('list_rewards');
+    if (!result.ok) return;
+    const reward = result.data.find(r => r.id === rewardId);
+    if (!reward) return;
+
+    openModal(`
+        <h3>Edit Reward</h3>
+        <input type="text" id="edit-reward-title" placeholder="Title" value="${reward.title.replace(/"/g, '&quot;')}" required>
+        <textarea id="edit-reward-description" placeholder="Description">${reward.description || ''}</textarea>
+        <input type="number" id="edit-reward-cost" placeholder="Cost (points)" value="${reward.cost_points}" min="1">
+        <div class="modal-actions">
+            <button class="secondary-btn" onclick="closeModal()">Cancel</button>
+            <button class="primary-btn" onclick="saveReward(${rewardId})">Save Changes</button>
+        </div>
+    `);
+}
+
+async function saveReward(rewardId) {
+    const title       = document.getElementById('edit-reward-title').value.trim();
+    const description = document.getElementById('edit-reward-description').value.trim();
+    const cost        = parseInt(document.getElementById('edit-reward-cost').value);
+
+    if (!title) { showError('Title is required'); return; }
+
+    const result = await apiCall('update_reward', { reward_id: rewardId, title, description, cost_points: cost });
+    if (result.ok) {
+        closeModal();
+        showSuccess('Reward updated');
+        loadRewards();
+    } else {
+        showError(result.error);
+    }
+}
+
+async function deleteReward(rewardId, rewardTitle) {
+    if (!confirm(`Delete reward "${rewardTitle}"?\n\nThis cannot be undone.`)) return;
+    const result = await apiCall('delete_reward', { reward_id: rewardId });
+    if (result.ok) {
+        showSuccess('Reward deleted');
+        loadRewards();
+    } else {
+        showError(result.error);
     }
 }
 
