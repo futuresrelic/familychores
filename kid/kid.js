@@ -5612,62 +5612,32 @@ async function loadLeaderboard() {
     reapplyCurrentTheme();
 }
 
-console.log('🎮 All games loaded! Star Catcher, Math Quest, Beat Master, and Piano ready to play!');
+
+console.log('🎮 All games loaded! Star Catcher, Math Quest, Beat Master, Piano, and Sound Pads ready!');
 
 // ============================================
-// 🎹 PIANO INSTRUMENT
+// 🎹 PIANO INSTRUMENT — DYNAMIC VERSION
 // ============================================
 
 let pianoAudioContext = null;
-let pianoActiveNotes = new Map(); // freq → { osc, gain, osc2, gain2 }
+let pianoActiveNotes = new Map();
 let pianoWaveform = 'triangle';
+let pianoStartOctave = 4;
+const pianoNumOctaves = 2;
+let pianoInited = false;
 
-function initPiano() {
-    const keys = document.querySelectorAll('#piano-keys .piano-key');
-    if (!keys.length) return;
+const PIANO_WHITE = ['C','D','E','F','G','A','B'];
+const PIANO_BLACK = { 'C#':0, 'D#':1, 'F#':3, 'G#':4, 'A#':5 };
+const PIANO_ALL   = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
-    keys.forEach(key => {
-        const freq = parseFloat(key.dataset.freq);
-        const note = key.dataset.note;
-
-        key.addEventListener('mousedown', e => { e.preventDefault(); pianoNoteOn(freq, note, key); });
-        key.addEventListener('mouseup',   e => { e.preventDefault(); pianoNoteOff(freq, key); });
-        key.addEventListener('mouseleave',() => pianoNoteOff(freq, key));
-
-        key.addEventListener('touchstart', e => { e.preventDefault(); pianoNoteOn(freq, note, key); }, { passive: false });
-        key.addEventListener('touchend',   e => { e.preventDefault(); pianoNoteOff(freq, key); }, { passive: false });
-        key.addEventListener('touchcancel',e => { e.preventDefault(); pianoNoteOff(freq, key); }, { passive: false });
-    });
-
-    // Waveform selector
-    document.querySelectorAll('.piano-wave-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.piano-wave-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            pianoWaveform = btn.dataset.wave;
-        });
-    });
-
-    // Load piano settings from server
-    (async () => {
-        try {
-            const res = await apiCall('get_game_settings', { game_type: 'piano' });
-            if (res.ok && res.settings && res.settings.waveform) {
-                pianoWaveform = res.settings.waveform;
-                const activeBtn = document.querySelector(`.piano-wave-btn[data-wave="${pianoWaveform}"]`);
-                if (activeBtn) {
-                    document.querySelectorAll('.piano-wave-btn').forEach(b => b.classList.remove('active'));
-                    activeBtn.classList.add('active');
-                }
-            }
-        } catch (e) { /* use defaults */ }
-    })();
+function pianoNoteFreq(noteName, octave) {
+    const semi = PIANO_ALL.indexOf(noteName);
+    const midi = 12 + octave * 12 + semi;
+    return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 function getPianoCtx() {
-    if (!pianoAudioContext) {
-        pianoAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
+    if (!pianoAudioContext) pianoAudioContext = new (window.AudioContext || window.webkitAudioContext)();
     if (pianoAudioContext.state === 'suspended') pianoAudioContext.resume();
     return pianoAudioContext;
 }
@@ -5676,35 +5646,23 @@ function pianoNoteOn(freq, noteName, keyEl) {
     if (pianoActiveNotes.has(freq)) return;
     const ctx = getPianoCtx();
     const now = ctx.currentTime;
-
-    const osc  = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const osc2  = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-
-    osc.type  = pianoWaveform;
-    osc2.type = pianoWaveform;
-    osc.frequency.value  = freq;
-    osc2.frequency.value = freq * 1.003; // slight chorus detune
-
+    const osc  = ctx.createOscillator(), gain  = ctx.createGain();
+    const osc2 = ctx.createOscillator(), gain2 = ctx.createGain();
+    osc.type  = pianoWaveform; osc2.type = pianoWaveform;
+    osc.frequency.value  = freq; osc2.frequency.value = freq * 1.003;
     osc.connect(gain);   gain.connect(ctx.destination);
     osc2.connect(gain2); gain2.connect(ctx.destination);
-
     gain.gain.setValueAtTime(0, now);
     gain.gain.linearRampToValueAtTime(0.35, now + 0.015);
     gain.gain.exponentialRampToValueAtTime(0.18, now + 0.12);
-
     gain2.gain.setValueAtTime(0, now);
     gain2.gain.linearRampToValueAtTime(0.12, now + 0.015);
     gain2.gain.exponentialRampToValueAtTime(0.06, now + 0.12);
-
     osc.start(now); osc2.start(now);
-
     pianoActiveNotes.set(freq, { osc, gain, osc2, gain2 });
     keyEl.classList.add('piano-key-active');
-
-    const display = document.getElementById('piano-current-note');
-    if (display) display.textContent = '🎵 ' + noteName;
+    const disp = document.getElementById('piano-current-note');
+    if (disp) disp.textContent = '🎵 ' + noteName;
 }
 
 function pianoNoteOff(freq, keyEl) {
@@ -5712,34 +5670,724 @@ function pianoNoteOff(freq, keyEl) {
     if (!note) return;
     const ctx = getPianoCtx();
     const now = ctx.currentTime;
-
     [note.gain, note.gain2].forEach(g => {
         g.gain.cancelScheduledValues(now);
         g.gain.setValueAtTime(g.gain.value, now);
         g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
     });
-    note.osc.stop(now + 0.25);
-    note.osc2.stop(now + 0.25);
+    note.osc.stop(now + 0.25); note.osc2.stop(now + 0.25);
     note.osc.onended  = () => { try { note.osc.disconnect();  note.gain.disconnect();  } catch(e){} };
     note.osc2.onended = () => { try { note.osc2.disconnect(); note.gain2.disconnect(); } catch(e){} };
-
     pianoActiveNotes.delete(freq);
     keyEl.classList.remove('piano-key-active');
 }
 
-// Wire up piano when the piano game panel is shown
+function buildPianoKeys() {
+    const container = document.getElementById('piano-keys');
+    const scroll    = document.getElementById('piano-scroll');
+    if (!container || !scroll) return;
+
+    pianoActiveNotes.forEach(n => { try { n.osc.stop(); n.osc2.stop(); } catch(e){} });
+    pianoActiveNotes.clear();
+
+    const avail = scroll.clientWidth || (window.innerWidth - 32);
+    const numWhite = pianoNumOctaves * 7;
+    const keyW = Math.max(40, Math.min(Math.floor((avail - 8) / numWhite), 80));
+    const keyH = Math.round(keyW * 4.6);
+    const blackW = Math.round(keyW * 0.58);
+    const blackH = Math.round(keyH * 0.62);
+
+    container.innerHTML = '';
+    container.style.height = keyH + 'px';
+
+    const allKeys = [];
+
+    for (let o = 0; o < pianoNumOctaves; o++) {
+        const oct = pianoStartOctave + o;
+        const octBase = o * 7;
+
+        PIANO_WHITE.forEach((note, i) => {
+            const freq = pianoNoteFreq(note, oct);
+            const el = document.createElement('div');
+            el.className = 'piano-key piano-white' + (note === 'C' && o > 0 ? ' piano-octave-start' : '');
+            el.dataset.freq = freq;
+            el.dataset.note = note + oct;
+            el.style.cssText = 'width:' + keyW + 'px; height:' + keyH + 'px;';
+            const span = document.createElement('span');
+            span.textContent = note === 'C' ? note + oct : note;
+            el.appendChild(span);
+            container.appendChild(el);
+            allKeys.push({ el, freq, note: note + oct });
+        });
+
+        Object.entries(PIANO_BLACK).forEach(([note, wOff]) => {
+            const freq = pianoNoteFreq(note, oct);
+            const el = document.createElement('div');
+            el.className = 'piano-key piano-black';
+            el.dataset.freq = freq;
+            el.dataset.note = note + oct;
+            const left = (octBase + wOff + 1) * keyW - Math.round(blackW / 2);
+            el.style.cssText = 'width:' + blackW + 'px; height:' + blackH + 'px; left:' + left + 'px;';
+            container.appendChild(el);
+            allKeys.push({ el, freq, note: note + oct });
+        });
+    }
+
+    const startNote = 'C' + pianoStartOctave;
+    const endNote   = 'B' + (pianoStartOctave + pianoNumOctaves - 1);
+    const rangeEl = document.getElementById('piano-range-label');
+    if (rangeEl) rangeEl.textContent = pianoNumOctaves + ' octaves · ' + startNote + ' to ' + endNote;
+    const octLabel = document.getElementById('piano-oct-label');
+    if (octLabel) octLabel.textContent = startNote + ' – ' + endNote;
+    const downBtn = document.getElementById('piano-oct-down');
+    const upBtn   = document.getElementById('piano-oct-up');
+    if (downBtn) downBtn.disabled = pianoStartOctave <= 1;
+    if (upBtn)   upBtn.disabled   = pianoStartOctave + pianoNumOctaves > 8;
+
+    attachPianoEvents(allKeys, container);
+}
+
+function attachPianoEvents(allKeys, container) {
+    allKeys.forEach(function(k) {
+        k.el.addEventListener('mousedown',  function(e) { e.preventDefault(); pianoNoteOn(k.freq, k.note, k.el); });
+        k.el.addEventListener('mouseup',    function(e) { e.preventDefault(); pianoNoteOff(k.freq, k.el); });
+        k.el.addEventListener('mouseleave', function()  { pianoNoteOff(k.freq, k.el); });
+    });
+
+    const byTouch = new Map();
+    function keyAt(touch) {
+        const el = document.elementFromPoint(touch.clientX, touch.clientY);
+        const key = el && el.closest('.piano-key');
+        if (!key) return null;
+        return { el: key, freq: parseFloat(key.dataset.freq), note: key.dataset.note };
+    }
+    container.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+            const k = keyAt(t);
+            if (k) { pianoNoteOn(k.freq, k.note, k.el); byTouch.set(t.identifier, k); }
+        }
+    }, { passive: false });
+    container.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+            const prev = byTouch.get(t.identifier);
+            const k = keyAt(t);
+            if (k && prev && k.freq !== prev.freq) {
+                pianoNoteOff(prev.freq, prev.el);
+                pianoNoteOn(k.freq, k.note, k.el);
+                byTouch.set(t.identifier, k);
+            }
+        }
+    }, { passive: false });
+    container.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+            const k = byTouch.get(t.identifier);
+            if (k) { pianoNoteOff(k.freq, k.el); byTouch.delete(t.identifier); }
+        }
+    }, { passive: false });
+    container.addEventListener('touchcancel', function(e) {
+        for (const t of e.changedTouches) {
+            const k = byTouch.get(t.identifier);
+            if (k) { pianoNoteOff(k.freq, k.el); byTouch.delete(t.identifier); }
+        }
+    }, { passive: false });
+}
+
+function pianoToggleFullscreen() {
+    const panel = document.getElementById('game-piano');
+    if (!panel) return;
+    if (panel.classList.contains('piano-fullscreen')) {
+        panel.classList.remove('piano-fullscreen');
+        const btn = document.getElementById('piano-fullscreen-btn');
+        if (btn) btn.textContent = '⤢ Landscape';
+        if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+        if (document.exitFullscreen) document.exitFullscreen().catch(function() {});
+        setTimeout(buildPianoKeys, 200);
+    } else {
+        panel.classList.add('piano-fullscreen');
+        const btn = document.getElementById('piano-fullscreen-btn');
+        if (btn) btn.textContent = '✕ Exit';
+        var fsPromise = panel.requestFullscreen ? panel.requestFullscreen() : Promise.reject();
+        fsPromise.then(function() {
+            if (screen.orientation && screen.orientation.lock)
+                screen.orientation.lock('landscape').catch(function() {});
+        }).catch(function() {});
+        setTimeout(buildPianoKeys, 300);
+    }
+}
+
+document.addEventListener('fullscreenchange', function() {
+    if (!document.fullscreenElement) {
+        const panel = document.getElementById('game-piano');
+        if (panel && panel.classList.contains('piano-fullscreen')) {
+            panel.classList.remove('piano-fullscreen');
+            const btn = document.getElementById('piano-fullscreen-btn');
+            if (btn) btn.textContent = '⤢ Landscape';
+            if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+            setTimeout(buildPianoKeys, 100);
+        }
+    }
+});
+
+function initPiano() {
+    if (pianoInited) return;
+    pianoInited = true;
+
+    buildPianoKeys();
+
+    document.getElementById('piano-oct-down').addEventListener('click', function() {
+        if (pianoStartOctave > 1) { pianoStartOctave--; buildPianoKeys(); }
+    });
+    document.getElementById('piano-oct-up').addEventListener('click', function() {
+        if (pianoStartOctave + pianoNumOctaves <= 8) { pianoStartOctave++; buildPianoKeys(); }
+    });
+    document.getElementById('piano-fullscreen-btn').addEventListener('click', pianoToggleFullscreen);
+
+    document.querySelectorAll('.piano-wave-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.piano-wave-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            pianoWaveform = btn.dataset.wave;
+        });
+    });
+
+    window.addEventListener('resize', function() {
+        clearTimeout(window._pianoResizeTimer);
+        window._pianoResizeTimer = setTimeout(buildPianoKeys, 150);
+    });
+}
+
 (function() {
-    // Use MutationObserver to detect when #game-piano becomes visible
     const target = document.getElementById('game-piano');
     if (!target) return;
-    let inited = false;
-    const obs = new MutationObserver(() => {
-        if (target.style.display !== 'none' && !inited) {
-            inited = true;
-            initPiano();
-        }
+    const obs = new MutationObserver(function() {
+        if (target.style.display !== 'none') initPiano();
     });
     obs.observe(target, { attributes: true, attributeFilter: ['style'] });
-    // Also init if already visible on load
-    if (target.style.display !== 'none') { inited = true; initPiano(); }
+    if (target.style.display !== 'none') initPiano();
+})();
+
+
+// ============================================
+// 🥁 SOUND PADS
+// ============================================
+
+let padsAudioContext = null;
+let padsCurBank = 'drums';
+const voiceRecordings = new Array(12).fill(null);
+let voiceRecorder = null;
+let voiceRecordingPad = -1;
+let voiceRecordingChunks = [];
+
+function getPadsCtx() {
+    if (!padsAudioContext) padsAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (padsAudioContext.state === 'suspended') padsAudioContext.resume();
+    return padsAudioContext;
+}
+
+function makeNoise(ctx, dur) {
+    const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+}
+
+// ---- Drum sounds ----
+function padDrumKick(ctx) {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.exponentialRampToValueAtTime(0.01, now + 0.5);
+    g.gain.setValueAtTime(1.2, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc.start(now); osc.stop(now + 0.5);
+}
+function padDrumSnare(ctx) {
+    const now = ctx.currentTime;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.25);
+    const nf = ctx.createBiquadFilter(); nf.type = 'highpass'; nf.frequency.value = 1200;
+    const ng = ctx.createGain();
+    nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(1, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    nb.start(now); nb.stop(now + 0.25);
+    const osc = ctx.createOscillator(), og = ctx.createGain();
+    osc.frequency.value = 185; osc.connect(og); og.connect(ctx.destination);
+    og.gain.setValueAtTime(0.8, now); og.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.start(now); osc.stop(now + 0.1);
+}
+function padDrumHihat(ctx, open) {
+    const now = ctx.currentTime, dur = open ? 0.35 : 0.06;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, dur + 0.05);
+    const nf = ctx.createBiquadFilter(); nf.type = 'highpass'; nf.frequency.value = 7000;
+    const ng = ctx.createGain();
+    nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0.55, now); ng.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    nb.start(now); nb.stop(now + dur + 0.05);
+}
+function padDrumClap(ctx) {
+    const now = ctx.currentTime;
+    [0, 0.01, 0.02].forEach(function(delay) {
+        const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.15);
+        const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1100; nf.Q.value = 0.8;
+        const ng = ctx.createGain();
+        nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+        ng.gain.setValueAtTime(1, now + delay); ng.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
+        nb.start(now + delay); nb.stop(now + delay + 0.15);
+    });
+}
+function padDrumCrash(ctx) {
+    const now = ctx.currentTime;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 1.5);
+    const nf = ctx.createBiquadFilter(); nf.type = 'highpass'; nf.frequency.value = 5000;
+    const ng = ctx.createGain();
+    nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0.7, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+    nb.start(now); nb.stop(now + 1.5);
+}
+function padDrumTom(ctx, freq) {
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(freq, now); osc.frequency.exponentialRampToValueAtTime(freq * 0.5, now + 0.3);
+    g.gain.setValueAtTime(0.9, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.start(now); osc.stop(now + 0.35);
+}
+function padDrumRimshot(ctx) {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'square'; osc.frequency.value = 800;
+    osc.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.6, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    osc.start(now); osc.stop(now + 0.04);
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.04);
+    const ng = ctx.createGain(); nb.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0.4, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    nb.start(now); nb.stop(now + 0.04);
+}
+function padDrumCowbell(ctx) {
+    const now = ctx.currentTime;
+    [562, 845].forEach(function(f) {
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.type = 'square'; osc.frequency.value = f;
+        osc.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.3, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        osc.start(now); osc.stop(now + 0.65);
+    });
+}
+function padDrumShaker(ctx) {
+    const now = ctx.currentTime;
+    [0, 0.04, 0.08].forEach(function(d) {
+        const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.04);
+        const nf = ctx.createBiquadFilter(); nf.type = 'highpass'; nf.frequency.value = 8000;
+        const ng = ctx.createGain(); nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+        ng.gain.setValueAtTime(0.3, now + d); ng.gain.exponentialRampToValueAtTime(0.001, now + d + 0.04);
+        nb.start(now + d); nb.stop(now + d + 0.05);
+    });
+}
+
+// ---- Synth pluck ----
+function padSynthPluck(ctx, freq) {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    const osc2 = ctx.createOscillator(), g2 = ctx.createGain();
+    osc.type = 'sawtooth'; osc2.type = 'sine';
+    osc.frequency.value = freq; osc2.frequency.value = freq * 2.001;
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass';
+    filt.frequency.setValueAtTime(freq * 8, now); filt.frequency.exponentialRampToValueAtTime(freq * 1.5, now + 0.4);
+    osc.connect(g); osc2.connect(g2); g.connect(filt); g2.connect(filt); filt.connect(ctx.destination);
+    g.gain.setValueAtTime(0.5, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    g2.gain.setValueAtTime(0.2, now); g2.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    osc.start(now); osc2.start(now); osc.stop(now + 0.85); osc2.stop(now + 0.85);
+}
+
+// ---- Space sounds ----
+function padSpaceLaser(ctx) {
+    const now = ctx.currentTime, osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1200, now); osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+    osc.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.6, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.start(now); osc.stop(now + 0.3);
+}
+function padSpaceWarp(ctx) {
+    const now = ctx.currentTime, osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.frequency.setValueAtTime(60, now); osc.frequency.exponentialRampToValueAtTime(800, now + 0.6);
+    osc.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.5, now); g.gain.linearRampToValueAtTime(0.001, now + 0.7);
+    osc.start(now); osc.stop(now + 0.7);
+}
+function padSpaceExplosion(ctx) {
+    const now = ctx.currentTime;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.8);
+    const nf = ctx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 400;
+    const ng = ctx.createGain(); nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(1.2, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    nb.start(now); nb.stop(now + 0.85);
+}
+function padSpacePing(ctx) {
+    const now = ctx.currentTime, osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'sine'; osc.frequency.value = 880;
+    osc.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.5, now); g.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+    osc.start(now); osc.stop(now + 1.3);
+}
+function padSpaceAlien(ctx) {
+    const now = ctx.currentTime;
+    const lfo = ctx.createOscillator(), lfoG = ctx.createGain();
+    const car = ctx.createOscillator(), carG = ctx.createGain();
+    lfo.frequency.value = 8; lfoG.gain.value = 120; car.frequency.value = 440;
+    lfo.connect(lfoG); lfoG.connect(car.frequency); car.connect(carG); carG.connect(ctx.destination);
+    carG.gain.setValueAtTime(0.5, now); carG.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    lfo.start(now); car.start(now); lfo.stop(now + 0.85); car.stop(now + 0.85);
+}
+function padSpaceZap(ctx) {
+    const now = ctx.currentTime, osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'square'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+    osc.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.7, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.start(now); osc.stop(now + 0.2);
+}
+function padSpaceWhoosh(ctx) {
+    const now = ctx.currentTime;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.5);
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass';
+    nf.frequency.setValueAtTime(200, now); nf.frequency.exponentialRampToValueAtTime(4000, now + 0.5);
+    const ng = ctx.createGain(); nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0.7, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    nb.start(now); nb.stop(now + 0.55);
+}
+function padSpaceDrone(ctx) {
+    const now = ctx.currentTime;
+    [40, 41].forEach(function(f) {
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.frequency.value = f; osc.type = 'sawtooth'; osc.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.3, now + 0.1);
+        g.gain.linearRampToValueAtTime(0.3, now + 0.7); g.gain.linearRampToValueAtTime(0, now + 0.8);
+        osc.start(now); osc.stop(now + 0.85);
+    });
+}
+function padSpaceGlitch(ctx) {
+    const now = ctx.currentTime;
+    for (let i = 0; i < 6; i++) {
+        const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.04);
+        const ng = ctx.createGain(); nb.connect(ng); ng.connect(ctx.destination);
+        const osc = ctx.createOscillator(), og = ctx.createGain();
+        osc.frequency.value = 200 + Math.random() * 800; osc.type = 'square';
+        osc.connect(og); og.connect(ctx.destination);
+        const t = now + i * 0.07;
+        ng.gain.setValueAtTime(0.3, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+        og.gain.setValueAtTime(0.3, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+        nb.start(t); nb.stop(t + 0.05); osc.start(t); osc.stop(t + 0.05);
+    }
+}
+function padSpaceEcho(ctx) {
+    const now = ctx.currentTime;
+    [0, 0.18, 0.36, 0.54].forEach(function(d, i) {
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = 660; osc.connect(g); g.connect(ctx.destination);
+        const vol = 0.5 * Math.pow(0.5, i);
+        g.gain.setValueAtTime(vol, now + d); g.gain.exponentialRampToValueAtTime(0.001, now + d + 0.12);
+        osc.start(now + d); osc.stop(now + d + 0.15);
+    });
+}
+function padSpaceBeam(ctx) {
+    const now = ctx.currentTime, osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'sine'; osc.frequency.value = 1320; osc.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.5, now); g.gain.linearRampToValueAtTime(0.5, now + 0.5); g.gain.linearRampToValueAtTime(0, now + 0.6);
+    osc.start(now); osc.stop(now + 0.65);
+}
+function padSpacePortal(ctx) {
+    const now = ctx.currentTime, osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.frequency.setValueAtTime(300, now); osc.frequency.linearRampToValueAtTime(800, now + 0.3);
+    osc.frequency.linearRampToValueAtTime(300, now + 0.6);
+    osc.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.5, now); g.gain.linearRampToValueAtTime(0, now + 0.7);
+    osc.start(now); osc.stop(now + 0.75);
+}
+
+// ---- Nature sounds ----
+function padNatureRain(ctx) {
+    const now = ctx.currentTime;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.8);
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 3000; nf.Q.value = 0.5;
+    const ng = ctx.createGain(); nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0.4, now); ng.gain.linearRampToValueAtTime(0.4, now + 0.6); ng.gain.linearRampToValueAtTime(0, now + 0.8);
+    nb.start(now); nb.stop(now + 0.85);
+}
+function padNatureThunder(ctx) {
+    const now = ctx.currentTime;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 1.5);
+    const nf = ctx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 200;
+    const ng = ctx.createGain(); nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0, now); ng.gain.linearRampToValueAtTime(1.5, now + 0.05);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+    nb.start(now); nb.stop(now + 1.55);
+}
+function padNatureBird(ctx) {
+    const now = ctx.currentTime;
+    [[1200, 0], [1600, 0.1], [1200, 0.2]].forEach(function(pair) {
+        const f = pair[0], d = pair[1];
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(f * 0.8, now + d);
+        osc.frequency.linearRampToValueAtTime(f, now + d + 0.06);
+        osc.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.3, now + d); g.gain.exponentialRampToValueAtTime(0.001, now + d + 0.1);
+        osc.start(now + d); osc.stop(now + d + 0.12);
+    });
+}
+function padNatureFrog(ctx) {
+    const now = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = 180 + i * 20;
+        osc.connect(g); g.connect(ctx.destination);
+        const t = now + i * 0.12;
+        g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+        osc.start(t); osc.stop(t + 0.1);
+    }
+}
+function padNatureCricket(ctx) {
+    const now = ctx.currentTime;
+    for (let i = 0; i < 8; i++) {
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = 4200; osc.connect(g); g.connect(ctx.destination);
+        const t = now + i * 0.06;
+        g.gain.setValueAtTime(0.15, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+        osc.start(t); osc.stop(t + 0.05);
+    }
+}
+function padNatureWaterDrop(ctx) {
+    const now = ctx.currentTime, osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'sine'; osc.frequency.setValueAtTime(700, now); osc.frequency.exponentialRampToValueAtTime(300, now + 0.15);
+    osc.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.5, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.start(now); osc.stop(now + 0.35);
+}
+function padNatureBee(ctx) {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'sawtooth'; osc.frequency.value = 230;
+    const lfo = ctx.createOscillator(), lfoG = ctx.createGain();
+    lfo.frequency.value = 16; lfoG.gain.value = 30;
+    lfo.connect(lfoG); lfoG.connect(osc.frequency);
+    osc.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.3, now + 0.05);
+    g.gain.linearRampToValueAtTime(0.3, now + 0.5); g.gain.linearRampToValueAtTime(0, now + 0.6);
+    lfo.start(now); osc.start(now); lfo.stop(now + 0.65); osc.stop(now + 0.65);
+}
+function padNatureWind(ctx) {
+    const now = ctx.currentTime;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 1.0);
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 600; nf.Q.value = 0.3;
+    const ng = ctx.createGain(); nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0, now); ng.gain.linearRampToValueAtTime(0.4, now + 0.3);
+    ng.gain.linearRampToValueAtTime(0.4, now + 0.7); ng.gain.linearRampToValueAtTime(0, now + 1.0);
+    nb.start(now); nb.stop(now + 1.05);
+}
+function padNatureHeartbeat(ctx) {
+    const now = ctx.currentTime;
+    [[0,80],[0.15,80],[0.6,80],[0.75,80]].forEach(function(pair) {
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.frequency.value = pair[1]; osc.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.8, now + pair[0]); g.gain.exponentialRampToValueAtTime(0.001, now + pair[0] + 0.12);
+        osc.start(now + pair[0]); osc.stop(now + pair[0] + 0.15);
+    });
+}
+function padNatureFire(ctx) {
+    const now = ctx.currentTime;
+    for (let i = 0; i < 5; i++) {
+        const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.15);
+        const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 300 + Math.random() * 700;
+        const ng = ctx.createGain(); nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+        const t = now + i * 0.1;
+        ng.gain.setValueAtTime(0.2 + Math.random() * 0.2, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+        nb.start(t); nb.stop(t + 0.2);
+    }
+}
+function padNatureOcean(ctx) {
+    const now = ctx.currentTime;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 2.0);
+    const nf = ctx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 800;
+    const ng = ctx.createGain(); nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0, now); ng.gain.linearRampToValueAtTime(0.4, now + 0.5);
+    ng.gain.linearRampToValueAtTime(0.4, now + 1.2); ng.gain.linearRampToValueAtTime(0, now + 2.0);
+    nb.start(now); nb.stop(now + 2.05);
+}
+function padNatureRustle(ctx) {
+    const now = ctx.currentTime;
+    const nb = ctx.createBufferSource(); nb.buffer = makeNoise(ctx, 0.4);
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 2000; nf.Q.value = 2;
+    const ng = ctx.createGain(); nb.connect(nf); nf.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0.3, now); ng.gain.linearRampToValueAtTime(0, now + 0.4);
+    nb.start(now); nb.stop(now + 0.45);
+}
+
+// ---- Pad bank definitions ----
+const PAD_BANKS = {
+    drums: [
+        { emoji:'🥁', label:'Kick',     color:'#7C3AED', play: function(c){padDrumKick(c);} },
+        { emoji:'🪘', label:'Snare',    color:'#DB2777', play: function(c){padDrumSnare(c);} },
+        { emoji:'🎩', label:'Hi-Hat',   color:'#0F766E', play: function(c){padDrumHihat(c,false);} },
+        { emoji:'🎩', label:'Open Hat', color:'#0369A1', play: function(c){padDrumHihat(c,true);} },
+        { emoji:'👏', label:'Clap',     color:'#EA580C', play: function(c){padDrumClap(c);} },
+        { emoji:'💥', label:'Crash',    color:'#DC2626', play: function(c){padDrumCrash(c);} },
+        { emoji:'🔺', label:'Tom Hi',   color:'#16A34A', play: function(c){padDrumTom(c,240);} },
+        { emoji:'🔶', label:'Tom Mid',  color:'#CA8A04', play: function(c){padDrumTom(c,160);} },
+        { emoji:'🔻', label:'Tom Low',  color:'#92400E', play: function(c){padDrumTom(c,100);} },
+        { emoji:'🎵', label:'Rimshot',  color:'#6D28D9', play: function(c){padDrumRimshot(c);} },
+        { emoji:'🐄', label:'Cowbell',  color:'#B45309', play: function(c){padDrumCowbell(c);} },
+        { emoji:'🤌', label:'Shaker',   color:'#4338CA', play: function(c){padDrumShaker(c);} },
+    ],
+    synth: [
+        { emoji:'🎵', label:'C3',  color:'#7C3AED', play: function(c){padSynthPluck(c,130.81);} },
+        { emoji:'🎵', label:'D3',  color:'#6D28D9', play: function(c){padSynthPluck(c,146.83);} },
+        { emoji:'🎵', label:'E3',  color:'#5B21B6', play: function(c){padSynthPluck(c,164.81);} },
+        { emoji:'🎵', label:'F3',  color:'#4C1D95', play: function(c){padSynthPluck(c,174.61);} },
+        { emoji:'🎵', label:'G3',  color:'#7C3AED', play: function(c){padSynthPluck(c,196.00);} },
+        { emoji:'🎵', label:'A3',  color:'#6D28D9', play: function(c){padSynthPluck(c,220.00);} },
+        { emoji:'🎵', label:'B3',  color:'#5B21B6', play: function(c){padSynthPluck(c,246.94);} },
+        { emoji:'🎵', label:'C4',  color:'#1D4ED8', play: function(c){padSynthPluck(c,261.63);} },
+        { emoji:'🎵', label:'D4',  color:'#1E40AF', play: function(c){padSynthPluck(c,293.66);} },
+        { emoji:'🎵', label:'E4',  color:'#1E3A8A', play: function(c){padSynthPluck(c,329.63);} },
+        { emoji:'🎵', label:'F4',  color:'#1D4ED8', play: function(c){padSynthPluck(c,349.23);} },
+        { emoji:'🎵', label:'G4',  color:'#1E40AF', play: function(c){padSynthPluck(c,392.00);} },
+    ],
+    space: [
+        { emoji:'⚡', label:'Laser',  color:'#0E7490', play: function(c){padSpaceLaser(c);} },
+        { emoji:'🌀', label:'Warp',   color:'#6D28D9', play: function(c){padSpaceWarp(c);} },
+        { emoji:'💣', label:'Boom',   color:'#991B1B', play: function(c){padSpaceExplosion(c);} },
+        { emoji:'🔔', label:'Ping',   color:'#0369A1', play: function(c){padSpacePing(c);} },
+        { emoji:'👾', label:'Alien',  color:'#065F46', play: function(c){padSpaceAlien(c);} },
+        { emoji:'⚡', label:'Zap',    color:'#B45309', play: function(c){padSpaceZap(c);} },
+        { emoji:'💨', label:'Whoosh', color:'#4338CA', play: function(c){padSpaceWhoosh(c);} },
+        { emoji:'🌊', label:'Drone',  color:'#1E3A8A', play: function(c){padSpaceDrone(c);} },
+        { emoji:'💫', label:'Glitch', color:'#7C2D12', play: function(c){padSpaceGlitch(c);} },
+        { emoji:'🔁', label:'Echo',   color:'#0C4A6E', play: function(c){padSpaceEcho(c);} },
+        { emoji:'☀️', label:'Beam',   color:'#78350F', play: function(c){padSpaceBeam(c);} },
+        { emoji:'🌌', label:'Portal', color:'#4C1D95', play: function(c){padSpacePortal(c);} },
+    ],
+    nature: [
+        { emoji:'🌧️', label:'Rain',      color:'#0369A1', play: function(c){padNatureRain(c);} },
+        { emoji:'⛈️', label:'Thunder',   color:'#374151', play: function(c){padNatureThunder(c);} },
+        { emoji:'🐦', label:'Bird',      color:'#059669', play: function(c){padNatureBird(c);} },
+        { emoji:'🐸', label:'Frog',      color:'#16A34A', play: function(c){padNatureFrog(c);} },
+        { emoji:'🦗', label:'Cricket',   color:'#4D7C0F', play: function(c){padNatureCricket(c);} },
+        { emoji:'💧', label:'Drip',      color:'#0E7490', play: function(c){padNatureWaterDrop(c);} },
+        { emoji:'🐝', label:'Bee',       color:'#CA8A04', play: function(c){padNatureBee(c);} },
+        { emoji:'💨', label:'Wind',      color:'#6B7280', play: function(c){padNatureWind(c);} },
+        { emoji:'❤️', label:'Heartbeat', color:'#DC2626', play: function(c){padNatureHeartbeat(c);} },
+        { emoji:'🔥', label:'Fire',      color:'#EA580C', play: function(c){padNatureFire(c);} },
+        { emoji:'🌊', label:'Ocean',     color:'#0284C7', play: function(c){padNatureOcean(c);} },
+        { emoji:'🌿', label:'Rustle',    color:'#15803D', play: function(c){padNatureRustle(c);} },
+    ],
+    voice: Array.from({ length: 12 }, function(_, i) {
+        return { emoji:'🎤', label:'Pad '+(i+1), color:'#BE185D', index: i };
+    }),
+};
+
+function buildPadsGrid(bank) {
+    const grid = document.getElementById('pads-grid');
+    const hint = document.getElementById('pads-voice-hint');
+    if (!grid) return;
+    const isVoice = bank === 'voice';
+    hint.style.display = isVoice ? 'block' : 'none';
+    const pads = PAD_BANKS[bank];
+    grid.innerHTML = pads.map(function(pad, i) {
+        const hasRec = isVoice && voiceRecordings[i];
+        return '<button class="pad-btn" data-pad="'+i+'" data-bank="'+bank+'"'+
+            ' style="background: linear-gradient(135deg, '+pad.color+'dd, '+pad.color+'99);">'+
+            '<span class="pad-emoji">'+(hasRec ? '▶️' : pad.emoji)+'</span>'+
+            '<span class="pad-label">'+pad.label+'</span>'+
+            '</button>';
+    }).join('');
+    grid.querySelectorAll('.pad-btn').forEach(function(btn) {
+        btn.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            triggerPad(parseInt(btn.dataset.pad), btn.dataset.bank, btn);
+        });
+        btn.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            triggerPad(parseInt(btn.dataset.pad), btn.dataset.bank, btn);
+        }, { passive: false });
+    });
+}
+
+function triggerPad(idx, bank, btn) {
+    btn.classList.add('pad-active');
+    setTimeout(function() { btn.classList.remove('pad-active'); }, 120);
+    if (bank === 'voice') { handleVoicePad(idx, btn); return; }
+    const ctx = getPadsCtx();
+    const pad = PAD_BANKS[bank][idx];
+    if (pad && pad.play) pad.play(ctx);
+}
+
+function handleVoicePad(idx, btn) {
+    if (voiceRecordingPad === idx && voiceRecorder) {
+        voiceRecorder.stop();
+        return;
+    }
+    if (voiceRecorder && voiceRecorder.state === 'recording') return;
+    if (voiceRecordings[idx]) {
+        const ctx = getPadsCtx();
+        const src = ctx.createBufferSource();
+        src.buffer = voiceRecordings[idx];
+        src.connect(ctx.destination);
+        src.start();
+        return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+        voiceRecordingChunks = [];
+        voiceRecorder = new MediaRecorder(stream);
+        voiceRecordingPad = idx;
+        btn.classList.add('pad-recording');
+        const emojiEl = btn.querySelector('.pad-emoji');
+        const labelEl = btn.querySelector('.pad-label');
+        if (emojiEl) emojiEl.textContent = '🔴';
+        if (labelEl) labelEl.textContent = 'Recording…';
+        voiceRecorder.ondataavailable = function(e) { if (e.data.size) voiceRecordingChunks.push(e.data); };
+        voiceRecorder.onstop = function() {
+            stream.getTracks().forEach(function(t) { t.stop(); });
+            btn.classList.remove('pad-recording');
+            voiceRecordingPad = -1;
+            voiceRecorder = null;
+            const blob = new Blob(voiceRecordingChunks, { type: 'audio/webm' });
+            blob.arrayBuffer().then(function(arrayBuf) {
+                const ctx = getPadsCtx();
+                ctx.decodeAudioData(arrayBuf, function(audioBuf) {
+                    voiceRecordings[idx] = audioBuf;
+                    buildPadsGrid('voice');
+                }, function() {
+                    if (emojiEl) emojiEl.textContent = '🎤';
+                    if (labelEl) labelEl.textContent = 'Pad '+(idx+1);
+                });
+            });
+        };
+        voiceRecorder.start();
+    }).catch(function() {
+        alert('Microphone access denied. Allow mic access to record!');
+    });
+}
+
+function initPads() {
+    buildPadsGrid('drums');
+    document.querySelectorAll('.pads-bank-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.pads-bank-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            padsCurBank = btn.dataset.bank;
+            buildPadsGrid(padsCurBank);
+        });
+    });
+}
+
+(function() {
+    const target = document.getElementById('game-pads');
+    if (!target) return;
+    let inited = false;
+    const obs = new MutationObserver(function() {
+        if (target.style.display !== 'none' && !inited) { inited = true; initPads(); }
+    });
+    obs.observe(target, { attributes: true, attributeFilter: ['style'] });
+    if (target.style.display !== 'none') { inited = true; initPads(); }
 })();
