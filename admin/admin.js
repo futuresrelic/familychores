@@ -359,12 +359,18 @@ async function resetKidPoints(kidId, kidName, clearHistory) {
 async function generatePairingCode(kidId) {
     const result = await apiCall('generate_pairing_code', { kid_id: kidId });
     if (result.ok) {
+        const code = result.data.code;
+        const shareUrl = window.location.origin + '/kid/?code=' + code;
         openModal(`
             <h3>Pairing Code Generated</h3>
             <p>Share this code with the kid's device:</p>
-            <h2 style="text-align: center; font-size: 48px; color: var(--primary); margin: 20px 0;">${result.data.code}</h2>
-            <p style="text-align: center; color: var(--text-light);">Code expires when paired</p>
-            <div class="modal-actions">
+            <div style="text-align:center;font-family:monospace;font-size:52px;font-weight:800;letter-spacing:8px;color:var(--primary);margin:16px 0;background:#F3F4F6;padding:16px;border-radius:14px;border:2px dashed #D1D5DB;">${code}</div>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:12px 0;">
+                <button onclick="copyPairingCode('${code}', this)" style="padding:10px 20px;font-size:14px;cursor:pointer;border:2px solid #4F46E5;border-radius:10px;background:#EEF2FF;color:#4F46E5;font-weight:700;">📋 Copy Code</button>
+                <button onclick="sharePairingLink('${shareUrl}', this)" style="padding:10px 20px;font-size:14px;cursor:pointer;border:2px solid #10B981;border-radius:10px;background:#D1FAE5;color:#065F46;font-weight:700;">🔗 Share Link</button>
+            </div>
+            <p style="text-align:center;color:var(--text-light);font-size:12px;margin:0;">Code expires when paired</p>
+            <div class="modal-actions" style="margin-top:16px;">
                 <button class="primary-btn" onclick="closeModal()">Close</button>
             </div>
         `);
