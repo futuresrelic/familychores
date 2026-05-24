@@ -1361,8 +1361,33 @@ function saveSettings() {
                         createBirds();
                     }
                     break;
+                case 'mushrooms':
+                    if (typeof createMushrooms === 'function') {
+                        createMushrooms();
+                    }
+                    break;
+                case 'unicorn':
+                    if (typeof createUnicorn === 'function') {
+                        createUnicorn();
+                    }
+                    break;
+                case 'camping':
+                    if (typeof createCamping === 'function') {
+                        createCamping();
+                    }
+                    break;
+                case 'mountains':
+                    if (typeof createMountains === 'function') {
+                        createMountains();
+                    }
+                    break;
+                case 'clouds':
+                    if (typeof createClouds === 'function') {
+                        createClouds();
+                    }
+                    break;
                 default:
-                    console.warn('Unknown animation type:', theme.animationType);
+                    console.warn('Unknown animation type:', selectedTheme.animationType);
             }
             }, 150);
         }
@@ -2255,65 +2280,11 @@ function applyTheme(themeName) {
                 document.body.insertBefore(container, document.body.firstChild);
             }
             
-            // Call the animation function directly based on type
-            switch(theme.animationType) {
-                case 'stars':
-                    if (typeof createStarryBackground === 'function') {
-                        createStarryBackground();
-                    }
-                    break;
-                case 'bubbles':
-                    if (typeof createBubbles === 'function') {
-                        createBubbles();
-                    }
-                    break;
-                case 'snowflakes':
-                    if (typeof createSnowflakes === 'function') {
-                        createSnowflakes();
-                    }
-                    break;
-                case 'embers':
-                    if (typeof createEmbers === 'function') {
-                        createEmbers();
-                    }
-                    break;
-                case 'sparkles':
-                    if (typeof createSparkles === 'function') {
-                        createSparkles();
-                    }
-                    break;
-                case 'sand':
-                    if (typeof createSandBlowing === 'function') {
-                        createSandBlowing();
-                    }
-                    break;
-                case 'aurora':
-                    if (typeof createAurora === 'function') {
-                        createAurora();
-                    }
-                    break;
-                case 'leaves':
-                    if (typeof createLeaves === 'function') {
-                        createLeaves();
-                    }
-                    break;
-                case 'candy':
-                    if (typeof createCandySprinkles === 'function') {
-                        createCandySprinkles();
-                    }
-                    break;
-                case 'retro':
-                    if (typeof createRetroSprites === 'function') {
-                        createRetroSprites();
-                    }
-                    break;
-                case 'birds':
-                    if (typeof createBirds === 'function') {
-                        createBirds();
-                    }
-                    break;
-                default:
-                    console.warn('Unknown animation type:', theme.animationType);
+            // Route through the central dispatcher so all animation types are always handled
+            if (typeof startThemeAnimation === 'function') {
+                startThemeAnimation(theme.animationType);
+            } else {
+                console.warn('startThemeAnimation not available for:', theme.animationType);
             }
         }, 150);
     } else {
