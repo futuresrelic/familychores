@@ -138,6 +138,19 @@ function generateCode($length = 6) {
     return strtoupper(substr(str_shuffle('0123456789ABCDEFGHJKLMNPQRSTUVWXYZ'), 0, $length));
 }
 
+function getCollectivePeriodKey($recurrenceType) {
+    $week = intval(date('W'));
+    switch ($recurrenceType) {
+        case 'daily':     return date('Y-m-d');
+        case 'weekly':    return date('Y-\WW');
+        case 'biweekly':  return date('Y') . '-BW' . floor($week / 2);
+        case 'triweekly': return date('Y') . '-TW' . floor($week / 3);
+        case 'monthly':   return date('Y-m');
+        case 'once':      return 'once';
+        default:          return date('Y-\WW');
+    }
+}
+
 function generateToken() {
     return bin2hex(random_bytes(32));
 }
@@ -1086,7 +1099,210 @@ case 'approve_submission':
         logAudit($_SESSION['admin_id'], 'delete_quest_task', ['task_id' => $taskId]);
         jsonResponse(true, ['message' => 'Task deleted']);
         break;
-    
+
+    case 'delete_quest':
+        requireAdmin();
+        $familyId = getAdminFamilyId();
+        $questId = intval($input['quest_id'] ?? 0);
+        if (!$questId) jsonResponse(false, null, 'Quest ID required');
+        $db = getDb();
+        $stmt = $db->prepare("DELETE FROM quests WHERE id = ? AND family_id = ?");
+        $stmt->execute([$questId, $familyId]);
+        logAudit($_SESSION['admin_id'], 'delete_quest', ['quest_id' => $questId]);
+        jsonResponse(true, ['message' => 'Quest deleted']);
+        break;
+
+    // ============================================================
+    // COLLECTIVE QUESTS
+    // ============================================================
+
+    case 'create_collective_quest':
+        requireAdmin();
+        $familyId = getAdminFamilyId();
+        $title    = sanitize($input['title'] ?? '', 100);
+        $desc     = sanitize($input['description'] ?? '', 2000);
+        $recur    = in_array($input['recurrence_type'] ?? '', ['daily','weekly','biweekly','triweekly','monthly','once'])
+                    ? $input['recurrence_type'] : 'weekly';
+        $rewardTitle  = sanitize($input['reward_title'] ?? '', 200);
+        $rewardPoints = intval($input['reward_points'] ?? 0);
+        if (!$title) jsonResponse(false, null, 'Title is required');
+        $db = getDb();
+        $stmt = $db->prepare("INSERT INTO collective_quests (family_id,title,description,recurrence_type,reward_title,reward_points,created_by) VALUES (?,?,?,?,?,?,?)");
+        $stmt->execute([$familyId, $title, $desc, $recur, $rewardTitle, $rewardPoints, $_SESSION['admin_id']]);
+        $id = $db->lastInsertId();
+        logAudit($_SESSION['admin_id'], 'create_collective_quest', ['id' => $id]);
+        jsonResponse(true, ['id' => $id]);
+        break;
+
+    case 'list_collective_quests': {
+        $db = getDb();
+        if (isset($_SESSION['admin_id'])) {
+            $familyId = getAdminFamilyId();
+        } else {
+            $kid = getKidFromToken();
+            $familyId = $kid ? (int)$kid['family_id'] : 1;
+        }
+        $periodKeys = [];
+        $stmt = $db->prepare("SELECT id, recurrence_type FROM collective_quests WHERE family_id = ? AND is_active = 1");
+        $stmt->execute([$familyId]);
+        $allQ = $stmt->fetchAll();
+        foreach ($allQ as $q) { $periodKeys[$q['id']] = getCollectivePeriodKey($q['recurrence_type']); }
+
+        $stmt = $db->prepare("
+            SELECT cq.id, cq.title, cq.description, cq.recurrence_type, cq.reward_title,
+                   cq.reward_points, cq.is_active, cq.created_at,
+                   COUNT(cqt.id) as task_count
+            FROM collective_quests cq
+            LEFT JOIN collective_quest_tasks cqt ON cq.id = cqt.quest_id
+            WHERE cq.family_id = ?
+            GROUP BY cq.id
+            ORDER BY cq.is_active DESC, cq.created_at DESC
+        ");
+        $stmt->execute([$familyId]);
+        $quests = $stmt->fetchAll();
+
+        // For each quest, compute current-period progress
+        foreach ($quests as &$quest) {
+            $pk = $periodKeys[$quest['id']] ?? getCollectivePeriodKey($quest['recurrence_type']);
+            $quest['period_key'] = $pk;
+            $ps = $db->prepare("
+                SELECT cqt.id as task_id, cqt.title, cqt.description, cqt.points,
+                       cqt.assigned_kid_id, cqt.order_index,
+                       u.kid_name as assigned_kid_name,
+                       ctc.status as completion_status, ctc.kid_user_id as completed_by,
+                       cu.kid_name as completed_by_name
+                FROM collective_quest_tasks cqt
+                LEFT JOIN users u ON cqt.assigned_kid_id = u.id
+                LEFT JOIN collective_task_completions ctc ON cqt.id = ctc.task_id AND ctc.period_key = ?
+                LEFT JOIN users cu ON ctc.kid_user_id = cu.id
+                WHERE cqt.quest_id = ?
+                ORDER BY cqt.order_index, cqt.id
+            ");
+            $ps->execute([$pk, $quest['id']]);
+            $quest['tasks'] = $ps->fetchAll();
+            $quest['approved_count'] = count(array_filter($quest['tasks'], function($t) { return $t['completion_status'] === 'approved'; }));
+        }
+        unset($quest);
+
+        jsonResponse(true, $quests);
+        break;
+    }
+
+    case 'toggle_collective_quest':
+        requireAdmin();
+        $familyId = getAdminFamilyId();
+        $questId = intval($input['quest_id'] ?? 0);
+        if (!$questId) jsonResponse(false, null, 'Quest ID required');
+        $db = getDb();
+        $db->prepare("UPDATE collective_quests SET is_active = 1 - is_active WHERE id = ? AND family_id = ?")->execute([$questId, $familyId]);
+        logAudit($_SESSION['admin_id'], 'toggle_collective_quest', ['quest_id' => $questId]);
+        jsonResponse(true, ['message' => 'Toggled']);
+        break;
+
+    case 'delete_collective_quest':
+        requireAdmin();
+        $familyId = getAdminFamilyId();
+        $questId = intval($input['quest_id'] ?? 0);
+        if (!$questId) jsonResponse(false, null, 'Quest ID required');
+        $db = getDb();
+        $db->prepare("DELETE FROM collective_quests WHERE id = ? AND family_id = ?")->execute([$questId, $familyId]);
+        logAudit($_SESSION['admin_id'], 'delete_collective_quest', ['quest_id' => $questId]);
+        jsonResponse(true, ['message' => 'Deleted']);
+        break;
+
+    case 'add_collective_task':
+        requireAdmin();
+        $questId       = intval($input['quest_id'] ?? 0);
+        $title         = sanitize($input['title'] ?? '', 100);
+        $desc          = sanitize($input['description'] ?? '', 1000);
+        $points        = intval($input['points'] ?? 10);
+        $assignedKidId = intval($input['assigned_kid_id'] ?? 0) ?: null;
+        $orderIndex    = intval($input['order_index'] ?? 0);
+        if (!$questId || !$title) jsonResponse(false, null, 'Quest ID and title required');
+        $db = getDb();
+        $stmt = $db->prepare("INSERT INTO collective_quest_tasks (quest_id,title,description,points,assigned_kid_id,order_index) VALUES (?,?,?,?,?,?)");
+        $stmt->execute([$questId, $title, $desc, $points, $assignedKidId, $orderIndex]);
+        $taskId = $db->lastInsertId();
+        logAudit($_SESSION['admin_id'], 'add_collective_task', ['task_id' => $taskId]);
+        jsonResponse(true, ['id' => $taskId]);
+        break;
+
+    case 'delete_collective_task':
+        requireAdmin();
+        $taskId = intval($input['task_id'] ?? 0);
+        if (!$taskId) jsonResponse(false, null, 'Task ID required');
+        $db = getDb();
+        $db->prepare("DELETE FROM collective_quest_tasks WHERE id = ?")->execute([$taskId]);
+        logAudit($_SESSION['admin_id'], 'delete_collective_task', ['task_id' => $taskId]);
+        jsonResponse(true, ['message' => 'Deleted']);
+        break;
+
+    case 'submit_collective_task': {
+        $kid = requireKid();
+        $taskId = intval($input['task_id'] ?? 0);
+        $note   = sanitize($input['note'] ?? '', 500);
+        if (!$taskId) jsonResponse(false, null, 'Task ID required');
+        $db = getDb();
+        // Get recurrence type for this task's quest
+        $qr = $db->prepare("SELECT cq.recurrence_type FROM collective_quests cq JOIN collective_quest_tasks cqt ON cq.id = cqt.quest_id WHERE cqt.id = ?");
+        $qr->execute([$taskId]);
+        $qrow = $qr->fetch();
+        if (!$qrow) jsonResponse(false, null, 'Task not found');
+        $periodKey = getCollectivePeriodKey($qrow['recurrence_type']);
+        try {
+            $stmt = $db->prepare("INSERT INTO collective_task_completions (task_id, kid_user_id, period_key, note) VALUES (?,?,?,?)");
+            $stmt->execute([$taskId, $kid['kid_user_id'], $periodKey, $note]);
+        } catch (PDOException $e) {
+            jsonResponse(false, null, 'Task already submitted for this period');
+        }
+        jsonResponse(true, ['message' => 'Submitted for review']);
+        break;
+    }
+
+    case 'review_collective_task':
+        requireAdmin();
+        $familyId    = getAdminFamilyId();
+        $completionId = intval($input['completion_id'] ?? 0);
+        $status      = in_array($input['status'] ?? '', ['approved','rejected']) ? $input['status'] : null;
+        if (!$completionId || !$status) jsonResponse(false, null, 'Completion ID and status required');
+        $db = getDb();
+        $stmt = $db->prepare("UPDATE collective_task_completions SET status = ?, reviewed_at = datetime('now'), reviewer_id = ? WHERE id = ?");
+        $stmt->execute([$status, $_SESSION['admin_id'], $completionId]);
+
+        // If approved, award points to the kid
+        if ($status === 'approved') {
+            $pr = $db->prepare("SELECT ctc.kid_user_id, cqt.points FROM collective_task_completions ctc JOIN collective_quest_tasks cqt ON ctc.task_id = cqt.id WHERE ctc.id = ?");
+            $pr->execute([$completionId]);
+            $row = $pr->fetch();
+            if ($row) {
+                $db->prepare("UPDATE users SET total_points = total_points + ? WHERE id = ?")->execute([$row['points'], $row['kid_user_id']]);
+            }
+        }
+        logAudit($_SESSION['admin_id'], 'review_collective_task', ['completion_id' => $completionId, 'status' => $status]);
+        jsonResponse(true, ['message' => 'Reviewed']);
+        break;
+
+    case 'list_collective_submissions':
+        requireAdmin();
+        $familyId = getAdminFamilyId();
+        $status   = in_array($input['status'] ?? '', ['pending','approved','rejected']) ? $input['status'] : 'pending';
+        $db = getDb();
+        $stmt = $db->prepare("
+            SELECT ctc.id, ctc.status, ctc.note, ctc.submitted_at, ctc.period_key,
+                   cqt.title as task_title, cqt.points,
+                   cq.title as quest_title,
+                   u.kid_name
+            FROM collective_task_completions ctc
+            JOIN collective_quest_tasks cqt ON ctc.task_id = cqt.id
+            JOIN collective_quests cq ON cqt.quest_id = cq.id
+            JOIN users u ON ctc.kid_user_id = u.id
+            WHERE ctc.status = ? AND cq.family_id = ?
+            ORDER BY ctc.submitted_at DESC
+        ");
+        $stmt->execute([$status, $familyId]);
+        jsonResponse(true, $stmt->fetchAll());
+        break;
+
     case 'kid_submit_task':
         $kid = requireKid();
         

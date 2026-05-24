@@ -224,6 +224,52 @@ CREATE TABLE IF NOT EXISTS game_scores (
     FOREIGN KEY (kid_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Collective quests (family-wide, recurring)
+CREATE TABLE IF NOT EXISTS collective_quests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL DEFAULT 1,
+    title TEXT NOT NULL,
+    description TEXT,
+    recurrence_type TEXT NOT NULL DEFAULT 'weekly' CHECK(recurrence_type IN ('daily','weekly','biweekly','triweekly','monthly','once')),
+    reward_title TEXT,
+    reward_points INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (family_id) REFERENCES families(id)
+);
+
+-- Tasks within collective quests (assigned to a specific kid or open to all)
+CREATE TABLE IF NOT EXISTS collective_quest_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quest_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    points INTEGER DEFAULT 10,
+    assigned_kid_id INTEGER,
+    order_index INTEGER DEFAULT 0,
+    FOREIGN KEY (quest_id) REFERENCES collective_quests(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_kid_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Task completions per recurrence period
+CREATE TABLE IF NOT EXISTS collective_task_completions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    kid_user_id INTEGER NOT NULL,
+    period_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+    note TEXT,
+    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at DATETIME,
+    reviewer_id INTEGER,
+    UNIQUE(task_id, period_key),
+    FOREIGN KEY (task_id) REFERENCES collective_quest_tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (kid_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewer_id) REFERENCES users(id)
+);
+
 -- Seed data: Admin password is 'changeme'
 INSERT INTO users (email, password_hash, role, kid_name) VALUES
 ('admin@example.com', '$2y$10$5K8ljYqgLmgvKKn1lIwuIuTgPxPmR9lVLTWQ5hJKfQVzPfV4FqmXK', 'admin', NULL),

@@ -82,6 +82,7 @@
             <button class="tab-btn" data-tab="kids">Kids</button>
             <button class="tab-btn" data-tab="chores">Chores</button>
             <button class="tab-btn" data-tab="quests">Quests</button>
+            <button class="tab-btn" data-tab="collective">🌟 Collective</button>
             <button class="tab-btn" data-tab="rewards">Rewards</button>
             <button class="tab-btn" data-tab="submissions">Submissions</button>
             <button class="tab-btn" data-tab="quest-tasks">Quest Tasks</button>
@@ -216,6 +217,27 @@
                     <button id="add-quest-btn" class="primary-btn">Add Quest</button>
                 </div>
                 <div id="quests-list" class="list-container"></div>
+            </section>
+
+            <!-- Collective Quests Tab -->
+            <section id="tab-collective" class="tab-content">
+                <div class="section-header">
+                    <h2>🌟 Collective Quests</h2>
+                    <button id="add-collective-btn" class="primary-btn">Add Quest</button>
+                </div>
+                <div id="collective-list" class="list-container"></div>
+
+                <div style="margin-top: 32px;">
+                    <div class="tab-header" style="margin-bottom: 12px;">
+                        <h3 style="margin: 0;">Submissions to Review</h3>
+                        <div class="filter-buttons">
+                            <button class="filter-btn filter-btn-collective active" data-status="pending">Pending</button>
+                            <button class="filter-btn filter-btn-collective" data-status="approved">Approved</button>
+                            <button class="filter-btn filter-btn-collective" data-status="rejected">Rejected</button>
+                        </div>
+                    </div>
+                    <div id="collective-submissions-list" class="list-container"></div>
+                </div>
             </section>
 
             <!-- Rewards Tab -->

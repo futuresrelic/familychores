@@ -411,11 +411,122 @@ async function submitChore(choreId) {
 
 // Quests
 async function loadQuests() {
-    const result = await apiCall('kid_quest_progress');
-    if (result.ok) {
-        renderQuests(result.data);
-    }
+    const [questResult, collectiveResult] = await Promise.all([
+        apiCall('kid_quest_progress'),
+        apiCall('list_collective_quests')
+    ]);
+    if (questResult.ok) renderQuests(questResult.data);
+    if (collectiveResult.ok) renderCollectiveQuests(collectiveResult.data);
     reapplyCurrentTheme();
+}
+
+function renderCollectiveQuests(quests) {
+    const section = document.getElementById('collective-quests-section');
+    const container = document.getElementById('collective-quests-list');
+    if (!section || !container) return;
+    const active = quests.filter(q => q.is_active);
+    section.style.display = active.length > 0 ? 'block' : 'none';
+    if (active.length === 0) return;
+
+    container.innerHTML = '';
+    active.forEach(quest => {
+        const total = quest.task_count;
+        const approved = quest.approved_count;
+        const pct = total > 0 ? Math.round(approved / total * 100) : 0;
+        const isComplete = approved === total && total > 0;
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+            <div class="card-header">
+                <div>
+                    <div class="card-title">🌟 ${quest.title}</div>
+                    ${quest.description ? `<div class="card-description">${quest.description}</div>` : ''}
+                </div>
+                <span style="font-size:11px;background:#EDE9FE;color:#5B21B6;padding:3px 8px;border-radius:10px;font-weight:600;white-space:nowrap;">
+                    🔄 ${{'daily':'Daily','weekly':'Weekly','biweekly':'2 Weeks','triweekly':'3 Weeks','monthly':'Monthly','once':'One-time'}[quest.recurrence_type]||quest.recurrence_type}
+                </span>
+            </div>
+            <div class="progress-container">
+                <div class="progress-label">
+                    <span>${approved} / ${total} tasks completed this period</span>
+                    <span>${pct}%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width:${pct}%;background:linear-gradient(90deg,#7C3AED,#A78BFA);"></div>
+                </div>
+            </div>
+            ${quest.reward_title ? `<div class="card-meta"><span class="badge badge-warning">🎁 ${quest.reward_title}${quest.reward_points > 0 ? ' (+'+quest.reward_points+' pts)' : ''}</span></div>` : ''}
+            ${isComplete
+                ? `<div class="badge badge-success" style="margin-top:15px;display:inline-block;">🎉 Mission Complete!</div>`
+                : `<button class="btn btn-primary collective-tasks-btn" style="margin-top:15px;background:linear-gradient(135deg,#7C3AED,#4F46E5);">View Tasks</button>`
+            }
+        `;
+        container.appendChild(card);
+        if (!isComplete) {
+            card.querySelector('.collective-tasks-btn').addEventListener('click', function(e) {
+                e.preventDefault();
+                viewCollectiveQuestTasks(quest);
+            });
+        }
+    });
+}
+
+function viewCollectiveQuestTasks(quest) {
+    const overlay = document.createElement('div');
+    overlay.id = 'collective-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:flex-end;justify-content:center;';
+
+    const tasksHtml = quest.tasks.map(task => {
+        const isAssigned = task.assigned_kid_id && String(task.assigned_kid_id) !== String(currentKid && currentKid.id);
+        const status = task.completion_status;
+        let actionHtml = '';
+        if (status === 'approved') {
+            actionHtml = `<span class="badge badge-success">✅ Done by ${task.completed_by_name || 'someone'}</span>`;
+        } else if (status === 'pending') {
+            actionHtml = `<span class="badge badge-warning">⏳ Pending review</span>`;
+        } else if (status === 'rejected') {
+            actionHtml = `<button class="btn btn-primary" style="font-size:13px;padding:8px 16px;" onclick="submitCollectiveTask(${task.task_id}, \`${task.title.replace(/`/g,"'")}\`, document.getElementById('collective-modal'))">🔄 Resubmit</button>`;
+        } else if (isAssigned) {
+            actionHtml = `<span style="font-size:12px;color:#9CA3AF;">Assigned to ${task.assigned_kid_name}</span>`;
+        } else {
+            actionHtml = `<button class="btn btn-primary" style="font-size:13px;padding:8px 16px;" onclick="submitCollectiveTask(${task.task_id}, \`${task.title.replace(/`/g,"'")}\`, document.getElementById('collective-modal'))">Submit</button>`;
+        }
+        const assignLabel = task.assigned_kid_name ? `👤 ${task.assigned_kid_name}` : '🌐 Open';
+        return `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F3F4F6;gap:10px;">
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:15px;">${task.title}</div>
+                ${task.description ? `<div style="font-size:13px;color:#6B7280;margin-top:2px;">${task.description}</div>` : ''}
+                <div style="font-size:12px;color:#9CA3AF;margin-top:3px;">${task.points} pts · ${assignLabel}</div>
+            </div>
+            <div style="flex-shrink:0;">${actionHtml}</div>
+        </div>`;
+    }).join('');
+
+    overlay.innerHTML = `
+        <div style="background:white;border-radius:24px 24px 0 0;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;padding:20px 20px 40px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h3 style="margin:0;font-size:18px;">🌟 ${quest.title}</h3>
+                <button onclick="document.getElementById('collective-modal').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6B7280;">✕</button>
+            </div>
+            ${tasksHtml || '<p>No tasks yet.</p>'}
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+}
+
+async function submitCollectiveTask(taskId, taskTitle, modal) {
+    const note = prompt(`Submit: "${taskTitle}"\n\nAdd a note (optional):`);
+    if (note === null) return;
+    const result = await apiCall('submit_collective_task', { task_id: taskId, note: note.trim() });
+    if (result.ok) {
+        showSuccess('Submitted for review! ⏳');
+        if (modal) modal.remove();
+        loadQuests();
+    } else {
+        showError(result.error || 'Could not submit task');
+    }
 }
 
 function renderQuests(quests) {

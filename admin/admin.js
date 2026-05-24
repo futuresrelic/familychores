@@ -97,6 +97,10 @@ async function loadTabData(tabName) {
         case 'quests':
             await loadQuests();
             break;
+        case 'collective':
+            await loadCollectiveQuests();
+            await loadCollectiveSubmissions('pending');
+            break;
         case 'rewards':
             await loadRewards();
             break;
@@ -887,6 +891,7 @@ async function loadQuests() {
                 <div class="list-item-actions">
                     <button class="secondary-btn small-btn" onclick="viewQuestTasks(${quest.id})">Tasks</button>
                     <button class="secondary-btn small-btn" onclick="toggleQuest(${quest.id})">${quest.is_active ? 'Deactivate' : 'Activate'}</button>
+                    <button class="danger-btn small-btn" onclick="deleteQuest(${quest.id})">Delete</button>
                 </div>
             </div>
         `).join('');
@@ -931,6 +936,17 @@ async function toggleQuest(questId) {
     const result = await apiCall('toggle_quest', { quest_id: questId });
     if (result.ok) {
         loadQuests();
+    }
+}
+
+async function deleteQuest(questId) {
+    if (!confirm('Delete this quest and all its tasks? This cannot be undone.')) return;
+    const result = await apiCall('delete_quest', { quest_id: questId });
+    if (result.ok) {
+        showSuccess('Quest deleted');
+        loadQuests();
+    } else {
+        showError(result.error);
     }
 }
 
@@ -1078,6 +1094,243 @@ async function reviewQuestTask(statusId, status) {
         showError(result.error);
     }
 }
+
+// ============================================================
+// COLLECTIVE QUESTS
+// ============================================================
+
+const RECUR_LABELS = { daily: 'Daily', weekly: 'Weekly', biweekly: 'Every 2 Weeks', triweekly: 'Every 3 Weeks', monthly: 'Monthly', once: 'One-Time' };
+
+async function loadCollectiveQuests() {
+    const result = await apiCall('list_collective_quests');
+    if (!result.ok) return;
+
+    const html = result.data.map(q => {
+        const approved = q.approved_count;
+        const total = q.task_count;
+        const pct = total > 0 ? Math.round(approved / total * 100) : 0;
+        const rewardBadge = q.reward_title ? `<span style="background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;">🎁 ${q.reward_title}${q.reward_points > 0 ? ' (+'+q.reward_points+'pts each)' : ''}</span>` : '';
+        const recurBadge = `<span style="background:#EDE9FE;color:#5B21B6;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;">🔄 ${RECUR_LABELS[q.recurrence_type] || q.recurrence_type}</span>`;
+        return `
+        <div class="list-item">
+            <div class="list-item-info">
+                <h4>${q.title} ${q.is_active ? '' : '<span style="color:#9CA3AF;font-size:12px;">(Inactive)</span>'}</h4>
+                ${q.description ? `<p>${q.description}</p>` : ''}
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;">${recurBadge} ${rewardBadge}</div>
+                <div style="margin-top:6px;">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;color:#6B7280;margin-bottom:3px;">
+                        <span>This period: ${approved}/${total} tasks done</span><span>${pct}%</span>
+                    </div>
+                    <div style="background:#E5E7EB;border-radius:6px;height:8px;overflow:hidden;">
+                        <div style="background:#7C3AED;height:100%;width:${pct}%;border-radius:6px;transition:width 0.3s;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="list-item-actions">
+                <button class="secondary-btn small-btn" onclick="viewCollectiveTasks(${q.id})">Tasks</button>
+                <button class="secondary-btn small-btn" onclick="toggleCollectiveQuest(${q.id})">${q.is_active ? 'Deactivate' : 'Activate'}</button>
+                <button class="danger-btn small-btn" onclick="deleteCollectiveQuest(${q.id})">Delete</button>
+            </div>
+        </div>`;
+    }).join('');
+    document.getElementById('collective-list').innerHTML = html || '<p>No collective quests yet. Add one to get started!</p>';
+}
+
+document.getElementById('add-collective-btn').addEventListener('click', () => {
+    openModal(`
+        <h3>🌟 Add Collective Quest</h3>
+        <input type="text" id="cq-title" placeholder="Quest Title" required>
+        <textarea id="cq-desc" placeholder="Description (optional)" rows="2"></textarea>
+        <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-top:10px;">Recurrence</label>
+        <select id="cq-recur" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;margin-bottom:8px;">
+            <option value="daily">Daily</option>
+            <option value="weekly" selected>Weekly</option>
+            <option value="biweekly">Every 2 Weeks</option>
+            <option value="triweekly">Every 3 Weeks</option>
+            <option value="monthly">Monthly</option>
+            <option value="once">One-Time</option>
+        </select>
+        <input type="text" id="cq-reward-title" placeholder="Reward (e.g. Pizza night, Movie night)">
+        <input type="number" id="cq-reward-points" placeholder="Bonus points per kid when quest is complete (0 = none)" value="0" min="0">
+        <div class="modal-actions">
+            <button class="secondary-btn" onclick="closeModal()">Cancel</button>
+            <button class="primary-btn" onclick="createCollectiveQuest()">Create Quest</button>
+        </div>
+    `);
+});
+
+async function createCollectiveQuest() {
+    const title = document.getElementById('cq-title').value.trim();
+    if (!title) { showError('Title is required'); return; }
+    const result = await apiCall('create_collective_quest', {
+        title,
+        description: document.getElementById('cq-desc').value.trim(),
+        recurrence_type: document.getElementById('cq-recur').value,
+        reward_title: document.getElementById('cq-reward-title').value.trim(),
+        reward_points: parseInt(document.getElementById('cq-reward-points').value) || 0
+    });
+    if (result.ok) {
+        closeModal();
+        showSuccess('Collective quest created!');
+        loadCollectiveQuests();
+    } else {
+        showError(result.error);
+    }
+}
+
+async function toggleCollectiveQuest(questId) {
+    const result = await apiCall('toggle_collective_quest', { quest_id: questId });
+    if (result.ok) loadCollectiveQuests();
+}
+
+async function deleteCollectiveQuest(questId) {
+    if (!confirm('Delete this collective quest and all its tasks? This cannot be undone.')) return;
+    const result = await apiCall('delete_collective_quest', { quest_id: questId });
+    if (result.ok) {
+        showSuccess('Deleted');
+        loadCollectiveQuests();
+    } else {
+        showError(result.error);
+    }
+}
+
+window._collectiveTitles = {};
+
+async function viewCollectiveTasks(questId) {
+    const result = await apiCall('list_collective_quests');
+    if (!result.ok) return;
+    const quest = result.data.find(q => q.id === questId);
+    if (!quest) return;
+    window._collectiveTitles[questId] = quest.title;
+
+    const kidList = await apiCall('list_kids');
+    const kids = kidList.ok ? kidList.data : [];
+
+    const taskHtml = quest.tasks.map((t, i) => {
+        const assignee = t.assigned_kid_name ? `👤 ${t.assigned_kid_name}` : '🌐 Any kid';
+        const statusBadge = t.completion_status === 'approved' ? '✅' : t.completion_status === 'pending' ? '⏳' : t.completion_status === 'rejected' ? '❌' : '—';
+        return `
+        <div class="list-item">
+            <div class="list-item-info">
+                <h4>${i+1}. ${t.title}</h4>
+                ${t.description ? `<p>${t.description}</p>` : ''}
+                <p style="font-size:12px;color:#6B7280;">${t.points} pts · ${assignee} · ${statusBadge} ${t.completion_status || 'Not submitted'}</p>
+            </div>
+            <div class="list-item-actions">
+                <button class="danger-btn small-btn" onclick="deleteCollectiveTask(${t.task_id}, ${questId})">Delete</button>
+            </div>
+        </div>`;
+    }).join('');
+
+    const kidOptions = kids.map(k => `<option value="${k.id}">${k.kid_name}</option>`).join('');
+    openModal(`
+        <h3>${quest.title} — Tasks</h3>
+        <div class="list-container" style="max-height:280px;overflow-y:auto;">
+            ${taskHtml || '<p>No tasks yet</p>'}
+        </div>
+        <button class="primary-btn" onclick="addCollectiveTask(${questId}, \`${quest.title.replace(/`/g,"'")}\`)" style="width:100%;margin-top:12px;">+ Add Task</button>
+        <div class="modal-actions"><button class="secondary-btn" onclick="closeModal()">Close</button></div>
+    `);
+}
+
+function addCollectiveTask(questId, questTitle) {
+    const kidList_promise = apiCall('list_kids');
+    kidList_promise.then(kidList => {
+        const kids = kidList.ok ? kidList.data : [];
+        const kidOptions = `<option value="0">Any kid (open)</option>` + kids.map(k => `<option value="${k.id}">${k.kid_name}</option>`).join('');
+        openModal(`
+            <h3>Add Task to "${questTitle}"</h3>
+            <input type="text" id="ct-title" placeholder="Task title" required>
+            <textarea id="ct-desc" placeholder="Description (optional)" rows="2"></textarea>
+            <input type="number" id="ct-points" placeholder="Points" value="10" min="1">
+            <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-top:10px;">Assign to</label>
+            <select id="ct-kid" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;margin-bottom:8px;">
+                ${kidOptions}
+            </select>
+            <div class="modal-actions">
+                <button class="secondary-btn" onclick="viewCollectiveTasks(${questId})">Back</button>
+                <button class="primary-btn" onclick="submitCollectiveTask(${questId})">Add Task</button>
+            </div>
+        `);
+    });
+}
+
+async function submitCollectiveTask(questId) {
+    const title = document.getElementById('ct-title').value.trim();
+    if (!title) { showError('Title is required'); return; }
+    const assignedKidId = parseInt(document.getElementById('ct-kid').value) || 0;
+    const result = await apiCall('add_collective_task', {
+        quest_id: questId,
+        title,
+        description: document.getElementById('ct-desc').value.trim(),
+        points: parseInt(document.getElementById('ct-points').value) || 10,
+        assigned_kid_id: assignedKidId || null
+    });
+    if (result.ok) {
+        viewCollectiveTasks(questId);
+    } else {
+        showError(result.error);
+    }
+}
+
+async function deleteCollectiveTask(taskId, questId) {
+    if (!confirm('Delete this task?')) return;
+    const result = await apiCall('delete_collective_task', { task_id: taskId });
+    if (result.ok) {
+        viewCollectiveTasks(questId);
+    } else {
+        showError(result.error);
+    }
+}
+
+let currentCollectiveStatus = 'pending';
+
+async function loadCollectiveSubmissions(status) {
+    currentCollectiveStatus = status;
+    document.querySelectorAll('.filter-btn-collective').forEach(b => {
+        b.classList.toggle('active', b.dataset.status === status);
+    });
+    const result = await apiCall('list_collective_submissions', { status });
+    if (!result.ok) return;
+
+    if (result.data.length === 0) {
+        document.getElementById('collective-submissions-list').innerHTML = `<p>No ${status} submissions.</p>`;
+        return;
+    }
+
+    const html = result.data.map(s => `
+        <div class="list-item">
+            <div class="list-item-info">
+                <h4>${s.kid_name} — ${s.task_title}</h4>
+                <p style="font-size:13px;color:#6B7280;">Quest: ${s.quest_title} · ${s.points} pts · Period: ${s.period_key}</p>
+                ${s.note ? `<p style="font-style:italic;color:#374151;">"${s.note}"</p>` : ''}
+                <p style="font-size:12px;color:#9CA3AF;">Submitted: ${new Date(s.submitted_at).toLocaleString()}</p>
+            </div>
+            <div class="list-item-actions">
+                ${status === 'pending' ? `
+                <button class="primary-btn small-btn" onclick="reviewCollectiveTask(${s.id}, 'approved')">✅ Approve</button>
+                <button class="danger-btn small-btn" onclick="reviewCollectiveTask(${s.id}, 'rejected')">❌ Reject</button>
+                ` : `<span style="font-size:13px;font-weight:600;color:${status==='approved'?'#059669':'#DC2626'};">${status==='approved'?'✅ Approved':'❌ Rejected'}</span>`}
+            </div>
+        </div>
+    `).join('');
+    document.getElementById('collective-submissions-list').innerHTML = html;
+}
+
+async function reviewCollectiveTask(completionId, status) {
+    const result = await apiCall('review_collective_task', { completion_id: completionId, status });
+    if (result.ok) {
+        showSuccess(status === 'approved' ? 'Approved! Points awarded.' : 'Rejected.');
+        loadCollectiveSubmissions(currentCollectiveStatus);
+        loadCollectiveQuests();
+    } else {
+        showError(result.error);
+    }
+}
+
+document.querySelectorAll('.filter-btn-collective').forEach(btn => {
+    btn.addEventListener('click', () => loadCollectiveSubmissions(btn.dataset.status));
+});
 
 // Themes
 async function loadThemes() {
