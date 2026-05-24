@@ -1552,6 +1552,11 @@ function editTheme(themeId, themeData) {
                     <option value="candy" ${theme.animation_type === 'candy' ? 'selected' : ''}>🍬 Candy Sprinkles</option>
                     <option value="retro" ${theme.animation_type === 'retro' ? 'selected' : ''}>👾 8-Bit Sprites</option>
                     <option value="birds" ${theme.animation_type === 'birds' ? 'selected' : ''}>🦅 Flying Birds</option>
+                    <option value="mushrooms" ${theme.animation_type === 'mushrooms' ? 'selected' : ''}>🍄 Mushrooms</option>
+                    <option value="unicorn" ${theme.animation_type === 'unicorn' ? 'selected' : ''}>🦄 Unicorn Magic</option>
+                    <option value="camping" ${theme.animation_type === 'camping' ? 'selected' : ''}>🏕️ Campfire</option>
+                    <option value="mountains" ${theme.animation_type === 'mountains' ? 'selected' : ''}>⛰️ Mountain Snow</option>
+                    <option value="clouds" ${theme.animation_type === 'clouds' ? 'selected' : ''}>☁️ Drifting Clouds</option>
                 </select>
             </div>
             

@@ -3657,6 +3657,11 @@ function startThemeAnimation(animationType) {
         case 'candy':      createCandySprinkles(); break;
         case 'retro':      createRetroSprites(); break;
         case 'birds':      createBirds(); break;
+        case 'mushrooms':  createMushrooms(); break;
+        case 'unicorn':    createUnicorn(); break;
+        case 'camping':    createCamping(); break;
+        case 'mountains':  createMountains(); break;
+        case 'clouds':     createClouds(); break;
         default:           console.warn('Unknown animation type:', animationType);
     }
 }
@@ -4280,74 +4285,359 @@ function createRetroSprites() {
 
 // ============================================
 // 🦅 BIRDS FLYING (for Sunset theme)
+// Eagles fly right-to-left — matches 🦅 natural left-facing direction
 // ============================================
 function createBirds() {
     const container = document.getElementById('theme-animation-container') || createAnimationContainer();
-    
+    const flock = ['🦅', '🦅', '🦅', '🦅', '🦅', '🕊️', '🦢', '🦅'];
+
     for (let i = 0; i < 8; i++) {
         const bird = document.createElement('div');
+        const emoji = flock[Math.floor(Math.random() * flock.length)];
         const size = Math.random() * 30 + 20;
-        const startY = Math.random() * 40 + 10;
+        const startY = Math.random() * 50 + 5;
         const duration = Math.random() * 20 + 15;
-        const delay = Math.random() * 5;
-        
-        bird.textContent = '🦅';
+        const delay = Math.random() * 10;
+
+        bird.textContent = emoji;
+        // Start off-screen RIGHT, fly to LEFT — so eagle faces direction of travel
         bird.style.cssText = `
             position: absolute;
             font-size: ${size}px;
-            left: -50px;
+            left: calc(100% + 70px);
             top: ${startY}%;
-            animation: birdFly ${duration}s ${delay}s infinite linear;
+            animation: birdFlyRTL ${duration}s ${delay}s infinite linear;
             pointer-events: none;
         `;
-        
         container.appendChild(bird);
     }
-    
-    if (!document.getElementById('birdAnimation')) {
+
+    if (!document.getElementById('birdAnimRTL')) {
         const style = document.createElement('style');
-        style.id = 'birdAnimation';
+        style.id = 'birdAnimRTL';
         style.textContent = `
-            @keyframes birdFly {
-                0% {
-                    transform: translateX(0) translateY(0) scale(1);
-                }
-                10% {
-                    transform: translateX(10vw) translateY(-10px) scale(1.1);
-                }
-                20% {
-                    transform: translateX(20vw) translateY(5px) scale(0.95);
-                }
-                30% {
-                    transform: translateX(30vw) translateY(-8px) scale(1.05);
-                }
-                40% {
-                    transform: translateX(40vw) translateY(3px) scale(0.9);
-                }
-                50% {
-                    transform: translateX(50vw) translateY(-5px) scale(1);
-                }
-                60% {
-                    transform: translateX(60vw) translateY(8px) scale(1.1);
-                }
-                70% {
-                    transform: translateX(70vw) translateY(-12px) scale(0.95);
-                }
-                80% {
-                    transform: translateX(80vw) translateY(4px) scale(1.05);
-                }
-                90% {
-                    transform: translateX(90vw) translateY(-6px) scale(0.9);
-                }
-                100% {
-                    transform: translateX(110vw) translateY(0) scale(0.8);
-                }
+            @keyframes birdFlyRTL {
+                0%   { transform: translateX(0)      translateY(0); }
+                20%  { transform: translateX(-22vw)  translateY(-18px); }
+                40%  { transform: translateX(-45vw)  translateY(10px); }
+                60%  { transform: translateX(-67vw)  translateY(-14px); }
+                80%  { transform: translateX(-90vw)  translateY(6px); }
+                100% { transform: translateX(-130vw) translateY(0); }
             }
         `;
         document.head.appendChild(style);
     }
-    
-    console.log('🦅 Birds flying across sunset!');
+
+    console.log('🦅 Birds flying right-to-left!');
+}
+
+// ============================================
+// 🍄 MUSHROOMS (Mushrooms theme)
+// ============================================
+function createMushrooms() {
+    const container = document.getElementById('theme-animation-container') || createAnimationContainer();
+    // All the mushroom + forest-floor emojis we can pack in
+    const shroomEmojis = [
+        '🍄','🍄','🍄','🍄','🍄','🍄','🍄‍🟫','🍄‍🟫',
+        '🌿','🌱','🍃','🌾','🐛','🦋','🐌','🌼','✨'
+    ];
+
+    for (let i = 0; i < 28; i++) {
+        const el = document.createElement('div');
+        const emoji = shroomEmojis[Math.floor(Math.random() * shroomEmojis.length)];
+        const size = Math.random() * 28 + 16;
+        const x = Math.random() * 100;
+        const duration = Math.random() * 9 + 10;
+        const delay = Math.random() * 9;
+        const sway = (Math.random() - 0.5) * 70;
+
+        el.textContent = emoji;
+        el.style.cssText = `
+            position: absolute;
+            font-size: ${size}px;
+            left: ${x}%;
+            bottom: -60px;
+            animation: shroomRise ${duration}s ${delay}s infinite ease-in-out;
+            pointer-events: none;
+        `;
+        el.style.setProperty('--sway', `${sway}px`);
+        container.appendChild(el);
+    }
+
+    if (!document.getElementById('shroomAnim')) {
+        const style = document.createElement('style');
+        style.id = 'shroomAnim';
+        style.textContent = `
+            @keyframes shroomRise {
+                0%   { transform: translateY(0)     translateX(0)                    scale(0.4) rotate(0deg);   opacity: 0; }
+                12%  { opacity: 0.88; }
+                50%  { transform: translateY(-52vh) translateX(var(--sway))          scale(0.92) rotate(8deg);  opacity: 0.82; }
+                88%  { opacity: 0.3; }
+                100% { transform: translateY(-115vh) translateX(calc(var(--sway)*1.4)) scale(0.5) rotate(-5deg); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    console.log('🍄 Mushrooms rising!');
+}
+
+// ============================================
+// 🦄 UNICORN MAGIC (Unicorn theme)
+// Unicorns fly L→R (flipped inside wrapper so they face right),
+// surrounded by rainbow sparkle particles
+// ============================================
+function createUnicorn() {
+    const container = document.getElementById('theme-animation-container') || createAnimationContainer();
+
+    // Flying unicorns: wrapper handles the animation, inner span flips the emoji
+    for (let i = 0; i < 3; i++) {
+        const size = Math.random() * 22 + 36;
+        const y = Math.random() * 45 + 8;
+        const duration = Math.random() * 18 + 22;
+        const delay = i * 9;
+
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = `
+            position: absolute;
+            left: -90px;
+            top: ${y}%;
+            animation: unicornCross ${duration}s ${delay}s infinite linear;
+            pointer-events: none;
+        `;
+        const face = document.createElement('span');
+        face.textContent = '🦄';
+        // scaleX(-1) flips the emoji so it faces the direction of travel (right)
+        face.style.cssText = `font-size: ${size}px; display: inline-block; transform: scaleX(-1);`;
+        wrapper.appendChild(face);
+        container.appendChild(wrapper);
+    }
+
+    // Magic sparkle cloud
+    const magicEmojis = [
+        '✨','✨','✨','💫','🌟','⭐','💖','🌈','🌸',
+        '💝','🎀','🦋','🌺','🫧','💜','🩷','💙'
+    ];
+    for (let i = 0; i < 32; i++) {
+        const el = document.createElement('div');
+        const emoji = magicEmojis[Math.floor(Math.random() * magicEmojis.length)];
+        const size = Math.random() * 22 + 10;
+        const x = Math.random() * 100;
+        const y = Math.random() * 100;
+        const duration = Math.random() * 3 + 2;
+        const delay = Math.random() * 6;
+
+        el.textContent = emoji;
+        el.style.cssText = `
+            position: absolute;
+            font-size: ${size}px;
+            left: ${x}%;
+            top: ${y}%;
+            animation: unicornGlow ${duration}s ${delay}s infinite ease-in-out;
+            pointer-events: none;
+        `;
+        container.appendChild(el);
+    }
+
+    if (!document.getElementById('unicornAnim')) {
+        const style = document.createElement('style');
+        style.id = 'unicornAnim';
+        style.textContent = `
+            @keyframes unicornCross {
+                0%   { transform: translateX(0)      translateY(0); }
+                25%  { transform: translateX(26vw)   translateY(-25px); }
+                50%  { transform: translateX(55vw)   translateY(18px); }
+                75%  { transform: translateX(80vw)   translateY(-12px); }
+                100% { transform: translateX(125vw)  translateY(0); }
+            }
+            @keyframes unicornGlow {
+                0%, 100% { opacity: 0;   transform: scale(0.2) rotate(0deg); }
+                40%, 60% { opacity: 0.95; transform: scale(1.2) rotate(200deg); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    console.log('🦄 Unicorn magic activated!');
+}
+
+// ============================================
+// 🏕️ CAMPFIRE (Camping theme)
+// Sparks/fireflies rise from bottom, icons bob gently
+// ============================================
+function createCamping() {
+    const container = document.getElementById('theme-animation-container') || createAnimationContainer();
+
+    // Rising sparks / fireflies
+    const sparkEmojis = ['🔥','✨','⭐','🌟','💫','🔥','🔥'];
+    for (let i = 0; i < 22; i++) {
+        const el = document.createElement('div');
+        const emoji = sparkEmojis[Math.floor(Math.random() * sparkEmojis.length)];
+        const size = Math.random() * 14 + 8;
+        const x = Math.random() * 100;
+        const duration = Math.random() * 5 + 5;
+        const delay = Math.random() * 7;
+        const drift = (Math.random() - 0.5) * 50;
+
+        el.textContent = emoji;
+        el.style.cssText = `
+            position: absolute;
+            font-size: ${size}px;
+            left: ${x}%;
+            bottom: -30px;
+            animation: campSpark ${duration}s ${delay}s infinite ease-out;
+            pointer-events: none;
+        `;
+        el.style.setProperty('--drift', `${drift}px`);
+        container.appendChild(el);
+    }
+
+    // Ambient camping icons bobbing in background
+    const campEmojis = ['⛺','🌲','🌲','🌳','🌙','🦉','🐺','🪵','🍕'];
+    for (let i = 0; i < 9; i++) {
+        const el = document.createElement('div');
+        const emoji = campEmojis[Math.floor(Math.random() * campEmojis.length)];
+        const size = Math.random() * 28 + 22;
+        const x = Math.random() * 88;
+        const y = Math.random() * 65 + 15;
+        const duration = Math.random() * 5 + 5;
+        const delay = Math.random() * 4;
+
+        el.textContent = emoji;
+        el.style.cssText = `
+            position: absolute;
+            font-size: ${size}px;
+            left: ${x}%;
+            top: ${y}%;
+            animation: campBob ${duration}s ${delay}s infinite ease-in-out;
+            pointer-events: none;
+            opacity: 0.55;
+        `;
+        container.appendChild(el);
+    }
+
+    if (!document.getElementById('campingAnim')) {
+        const style = document.createElement('style');
+        style.id = 'campingAnim';
+        style.textContent = `
+            @keyframes campSpark {
+                0%   { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
+                10%  { opacity: 0.9; }
+                85%  { opacity: 0.25; }
+                100% { transform: translateY(-105vh) translateX(var(--drift)) scale(0.15); opacity: 0; }
+            }
+            @keyframes campBob {
+                0%, 100% { transform: translateY(0) scale(1); }
+                50%      { transform: translateY(-14px) scale(1.06); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    console.log('🏕️ Campfire sparks rising!');
+}
+
+// ============================================
+// ⛰️ MOUNTAINS (Mountains theme)
+// Snow + mountain emojis drift down
+// ============================================
+function createMountains() {
+    const container = document.getElementById('theme-animation-container') || createAnimationContainer();
+    const peakEmojis = [
+        '❄️','❄️','❄️','❄️','❄️','❄️',
+        '🌨️','🌨️','⛰️','🏔️','🗻','☃️','🦌','🦅'
+    ];
+
+    for (let i = 0; i < 32; i++) {
+        const el = document.createElement('div');
+        const emoji = peakEmojis[Math.floor(Math.random() * peakEmojis.length)];
+        const size = Math.random() * 22 + 12;
+        const x = Math.random() * 100;
+        const duration = Math.random() * 9 + 10;
+        const delay = Math.random() * 9;
+        const drift = (Math.random() - 0.5) * 55;
+        const spin = (Math.random() - 0.5) * 540;
+
+        el.textContent = emoji;
+        el.style.cssText = `
+            position: absolute;
+            font-size: ${size}px;
+            left: ${x}%;
+            top: -55px;
+            animation: peakSnow ${duration}s ${delay}s infinite linear;
+            pointer-events: none;
+            opacity: ${Math.random() * 0.45 + 0.5};
+        `;
+        el.style.setProperty('--drift', `${drift}px`);
+        el.style.setProperty('--spin', `${spin}deg`);
+        container.appendChild(el);
+    }
+
+    if (!document.getElementById('mountainAnim')) {
+        const style = document.createElement('style');
+        style.id = 'mountainAnim';
+        style.textContent = `
+            @keyframes peakSnow {
+                0%   { transform: translateY(0)      translateX(0)           rotate(0deg);         opacity: 0; }
+                10%  { opacity: 0.85; }
+                90%  { opacity: 0.5; }
+                100% { transform: translateY(112vh)  translateX(var(--drift)) rotate(var(--spin));  opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    console.log('⛰️ Mountain snowfall!');
+}
+
+// ============================================
+// ☁️ CLOUDS (Clouds theme)
+// Cloud emojis drift lazily across the sky
+// ============================================
+function createClouds() {
+    const container = document.getElementById('theme-animation-container') || createAnimationContainer();
+    const skyEmojis = ['☁️','☁️','☁️','⛅','🌤️','🌥️','🌈','☁️','⛅','🌦️','☀️'];
+
+    for (let i = 0; i < 14; i++) {
+        const el = document.createElement('div');
+        const emoji = skyEmojis[Math.floor(Math.random() * skyEmojis.length)];
+        const size = Math.random() * 38 + 28;
+        const y = Math.random() * 72 + 5;
+        const duration = Math.random() * 28 + 22;
+        const delay = Math.random() * 18;
+        // Alternate direction so some clouds go each way
+        const goRight = i % 2 === 0;
+
+        el.textContent = emoji;
+        el.style.cssText = `
+            position: absolute;
+            font-size: ${size}px;
+            ${goRight ? 'left: -110px;' : 'left: calc(100% + 110px);'}
+            top: ${y}%;
+            animation: ${goRight ? 'cloudLTR' : 'cloudRTL'} ${duration}s ${delay}s infinite linear;
+            pointer-events: none;
+            opacity: ${Math.random() * 0.35 + 0.45};
+        `;
+        container.appendChild(el);
+    }
+
+    if (!document.getElementById('cloudAnim')) {
+        const style = document.createElement('style');
+        style.id = 'cloudAnim';
+        style.textContent = `
+            @keyframes cloudLTR {
+                0%   { transform: translateX(0); }
+                100% { transform: translateX(125vw); }
+            }
+            @keyframes cloudRTL {
+                0%   { transform: translateX(0); }
+                100% { transform: translateX(-125vw); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    console.log('☁️ Clouds drifting!');
 }
 
 // ============================================================================
