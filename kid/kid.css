@@ -1235,3 +1235,26 @@ main {
 }
 .pad-emoji { font-size: 32px; line-height: 1; }
 .pad-label { font-size: 11px; opacity: 0.9; letter-spacing: 0.3px; }
+
+.pad-clear-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.45);
+    border: none;
+    color: white;
+    font-size: 13px;
+    line-height: 22px;
+    text-align: center;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    z-index: 2;
+    transition: background 0.15s;
+}
+.pad-clear-btn:active { background: rgba(220,38,38,0.8); }

@@ -6439,11 +6439,14 @@ function buildPadsGrid(bank) {
         const emoji = hasRec ? '▶️' : pad.emoji;
         const label = hasRec ? 'Tap to play' : pad.label;
         const color = pad.color;
-        // Colored glow matches pad color, darker border-bottom for 3D depth
-        const glow = color + '70'; // ~44% opacity hex
+        const glow = color + '70';
+        const clearBtn = hasRec
+            ? '<button class="pad-clear-btn" data-clear="'+i+'" title="Erase recording">✕</button>'
+            : '';
         return '<button class="pad-btn" data-pad="'+i+'" data-bank="'+bank+'"'+
             ' style="background:linear-gradient(145deg,'+color+'ee,'+color+'99);'+
             'box-shadow:0 6px 22px '+glow+',0 3px 0 rgba(0,0,0,0.25);">'+
+            clearBtn+
             '<span class="pad-emoji">'+emoji+'</span>'+
             '<span class="pad-label">'+label+'</span>'+
             '</button>';
@@ -6451,14 +6454,30 @@ function buildPadsGrid(bank) {
 
     grid.querySelectorAll('.pad-btn').forEach(function(btn) {
         btn.addEventListener('mousedown', function(e) {
+            if (e.target.closest('.pad-clear-btn')) return;
             e.preventDefault();
             triggerPad(parseInt(btn.dataset.pad), btn.dataset.bank, btn);
         });
         btn.addEventListener('touchstart', function(e) {
+            if (e.target.closest('.pad-clear-btn')) return;
             e.preventDefault();
             triggerPad(parseInt(btn.dataset.pad), btn.dataset.bank, btn);
         }, { passive: false });
     });
+
+    if (isVoice) {
+        grid.querySelectorAll('.pad-clear-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                clearVoicePad(parseInt(btn.dataset.clear));
+            });
+            btn.addEventListener('touchend', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                clearVoicePad(parseInt(btn.dataset.clear));
+            }, { passive: false });
+        });
+    }
 
     // Update save button visibility in voice mode
     var saveBtn = document.getElementById('pads-save-voice-btn');
@@ -6538,6 +6557,13 @@ function handleVoicePad(idx, btn) {
     }).catch(function() {
         alert('Microphone access denied. Allow mic access to record!');
     });
+}
+
+function clearVoicePad(idx) {
+    if (!confirm('Erase the recording on Pad ' + (idx + 1) + '? This cannot be undone.')) return;
+    voiceRecordings[idx] = null;
+    voiceRawData[idx] = null;
+    buildPadsGrid('voice');
 }
 
 function initPads() {
