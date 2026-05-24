@@ -34,8 +34,17 @@ Options -Indexes
     ExpiresByType image/gif "access plus 1 month"
     ExpiresByType image/jpeg "access plus 1 month"
     ExpiresByType image/x-icon "access plus 1 year"
-    ExpiresByType text/css "access plus 1 week"
-    ExpiresByType application/javascript "access plus 1 week"
+    # JS and CSS are cache-busted via ?v=Date.now() — no need to cache at URL level
+    ExpiresByType text/css "access plus 0 seconds"
+    ExpiresByType application/javascript "access plus 0 seconds"
+</IfModule>
+
+# Never cache HTML files — they must always be fresh so new JS/CSS bust params load
+<IfModule mod_headers.c>
+    <FilesMatch "\.html$">
+        Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        Header set Pragma "no-cache"
+    </FilesMatch>
 </IfModule>
 
 # Security headers

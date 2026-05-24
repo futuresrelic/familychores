@@ -786,34 +786,15 @@
 </div>
 
 <script>
-        // Enhanced auto-versioning system - loads CSS and JS with cache-busting
-        fetch('/api/version.php')
-        .then(r => r.json())
-        .then(data => {
-            // Load CSS with version
-            const css = document.createElement('link');
-            css.rel = 'stylesheet';
-            css.href = `kid.css?v=${data.timestamp}`;
-            document.head.appendChild(css);
-            
-            // Load JS with version
-            const script = document.createElement('script');
-            script.src = `kid.js?v=${data.timestamp}`;
-            document.body.appendChild(script);
-            
-            console.log('✅ Loaded version:', data.version, 'timestamp:', data.timestamp);
-        })
-        .catch(() => {
-            // Fallback if version fetch fails
-            const css = document.createElement('link');
-            css.rel = 'stylesheet';
-            css.href = 'kid.css?v=' + Date.now();
-            document.head.appendChild(css);
-            
-            const script = document.createElement('script');
-            script.src = 'kid.js?v=' + Date.now();
-            document.body.appendChild(script);
-        });
+        // Always bust cache on every load so new deploys are picked up immediately
+        const _bust = Date.now();
+        const _css = document.createElement('link');
+        _css.rel = 'stylesheet';
+        _css.href = 'kid.css?v=' + _bust;
+        document.head.appendChild(_css);
+        const _script = document.createElement('script');
+        _script.src = 'kid.js?v=' + _bust;
+        document.body.appendChild(_script);
 </script>
 
 <script>
