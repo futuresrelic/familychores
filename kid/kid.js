@@ -3141,41 +3141,177 @@ const BG_PRESETS = [
     { label:'🦄', value:'linear-gradient(135deg,#F9A8D4 0%,#C084FC 50%,#818CF8 100%)' },
 ];
 
+// ─── Color wheel helpers ───────────────────────────────────────────────────
+
+function hslToRgb(h, s, l) {
+    const a = s * Math.min(l, 1 - l);
+    function f(n) {
+        const k = (n + h / 30) % 12;
+        return l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)));
+    }
+    return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
+function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(function(v) { return v.toString(16).padStart(2, '0'); }).join('');
+}
+
+function drawColorWheel(canvas, lightness) {
+    const ctx = canvas.getContext('2d');
+    const size = canvas.width;
+    const cx = size / 2, cy = size / 2;
+    const radius = cx - 2;
+    const imageData = ctx.createImageData(size, size);
+    const L = (lightness || 50) / 100;
+
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const dx = x - cx, dy = y - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const idx = (y * size + x) * 4;
+            if (dist <= radius) {
+                const hue = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+                const sat = dist / radius;
+                const [r, g, b] = hslToRgb(hue, sat, L);
+                imageData.data[idx]     = r;
+                imageData.data[idx + 1] = g;
+                imageData.data[idx + 2] = b;
+                imageData.data[idx + 3] = 255;
+            } else {
+                imageData.data[idx + 3] = 0;
+            }
+        }
+    }
+    ctx.clearRect(0, 0, size, size);
+    ctx.putImageData(imageData, 0, 0);
+}
+
+function getWheelColor(canvas, clientX, clientY, lightness) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.round((clientX - rect.left) * scaleX);
+    const y = Math.round((clientY - rect.top) * scaleY);
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const dx = x - cx, dy = y - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const radius = cx - 2;
+    if (dist > radius) return null;
+    const hue = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+    const sat = dist / radius;
+    const L = (lightness || 50) / 100;
+    const [r, g, b] = hslToRgb(hue, sat, L);
+    return rgbToHex(r, g, b);
+}
+
+// ─── Wheel cross-hair state ─────────────────────────────────────────────────
+
+let _wheelHue = 0, _wheelSat = 0;
+
+function drawWheelCursor(canvas, hue, sat) {
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const radius = cx - 2;
+    const angle = hue * Math.PI / 180;
+    const r = sat * radius;
+    const px = Math.round(cx + r * Math.cos(angle));
+    const py = Math.round(cy + r * Math.sin(angle));
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.arc(px, py, 6, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(px, py, 6, 0, Math.PI * 2);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+function redrawWheel(canvas, lightness) {
+    drawColorWheel(canvas, lightness);
+    drawWheelCursor(canvas, _wheelHue, _wheelSat);
+}
+
+// ─── Main init ──────────────────────────────────────────────────────────────
+
 function initBgPicker() {
     const grid = document.getElementById('bg-presets');
     if (!grid) return;
 
-    // Load current setting
     const saved = JSON.parse(localStorage.getItem('kid_settings') || '{}');
     const current = saved.customBgColor || null;
 
+    // Preset swatches
     grid.innerHTML = BG_PRESETS.map(function(p, i) {
         const active = current === p.value ? 'box-shadow:0 0 0 3px white,0 0 0 5px #6366F1;' : '';
         return '<button data-bg-idx="'+i+'" title="'+p.label+'" style="'+
             'aspect-ratio:1;border:none;border-radius:10px;cursor:pointer;'+
             'background:'+p.value+';font-size:18px;'+active+
-            'transition:transform 0.1s,box-shadow 0.1s;" >'+p.label+'</button>';
+            'transition:transform 0.1s,box-shadow 0.1s;">'+p.label+'</button>';
     }).join('');
 
     grid.querySelectorAll('button').forEach(function(btn) {
         btn.addEventListener('click', function() {
             const preset = BG_PRESETS[parseInt(btn.dataset.bgIdx)];
             applyCustomBg(preset.value);
-            // Highlight selected
             grid.querySelectorAll('button').forEach(function(b) { b.style.boxShadow = ''; });
             btn.style.boxShadow = '0 0 0 3px white,0 0 0 5px #6366F1';
         });
     });
 
-    // Custom colour picker
-    const picker = document.getElementById('bg-custom-color');
-    if (picker) {
-        if (current && !current.startsWith('linear')) picker.value = current;
-        picker.addEventListener('input', function() {
-            applyCustomBg(picker.value);
-            // Deselect all presets
+    // Canvas color wheel
+    const canvas = document.getElementById('bg-color-wheel');
+    const lightnessSlider = document.getElementById('bg-lightness');
+    const preview = document.getElementById('bg-color-preview');
+
+    if (canvas) {
+        let L = lightnessSlider ? parseInt(lightnessSlider.value) : 50;
+        drawColorWheel(canvas, L);
+
+        function pickFromWheel(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = Math.round((clientX - rect.left) * scaleX);
+            const y = Math.round((clientY - rect.top) * scaleY);
+            const cx = canvas.width / 2, cy = canvas.height / 2;
+            const dx = x - cx, dy = y - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const radius = cx - 2;
+            if (dist > radius) return;
+            _wheelHue = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+            _wheelSat = dist / radius;
+            const Lf = L / 100;
+            const [r, g, b] = hslToRgb(_wheelHue, _wheelSat, Lf);
+            const hex = rgbToHex(r, g, b);
+            redrawWheel(canvas, L);
+            if (preview) preview.style.background = hex;
+            applyCustomBg(hex);
             grid.querySelectorAll('button').forEach(function(b) { b.style.boxShadow = ''; });
-        });
+        }
+
+        let dragging = false;
+        canvas.addEventListener('mousedown', function(e) { dragging = true; pickFromWheel(e.clientX, e.clientY); });
+        canvas.addEventListener('mousemove', function(e) { if (dragging) pickFromWheel(e.clientX, e.clientY); });
+        window.addEventListener('mouseup', function() { dragging = false; });
+
+        canvas.addEventListener('touchstart', function(e) { e.preventDefault(); dragging = true; pickFromWheel(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+        canvas.addEventListener('touchmove', function(e) { e.preventDefault(); if (dragging) pickFromWheel(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+        canvas.addEventListener('touchend', function() { dragging = false; });
+
+        if (lightnessSlider) {
+            lightnessSlider.addEventListener('input', function() {
+                L = parseInt(lightnessSlider.value);
+                redrawWheel(canvas, L);
+                const Lf = L / 100;
+                const [r, g, b] = hslToRgb(_wheelHue, _wheelSat, Lf);
+                const hex = rgbToHex(r, g, b);
+                if (preview) preview.style.background = hex;
+                applyCustomBg(hex);
+                grid.querySelectorAll('button').forEach(function(b) { b.style.boxShadow = ''; });
+            });
+        }
     }
 
     // Reset button
@@ -3184,6 +3320,9 @@ function initBgPicker() {
         resetBtn.addEventListener('click', function() {
             applyCustomBg(null);
             grid.querySelectorAll('button').forEach(function(b) { b.style.boxShadow = ''; });
+            if (preview) preview.style.background = '';
+            if (lightnessSlider) lightnessSlider.value = 50;
+            if (canvas) drawColorWheel(canvas, 50);
         });
     }
 }

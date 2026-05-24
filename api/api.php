@@ -1453,7 +1453,8 @@ case 'approve_submission':
                 ['name' => 'Mushrooms', 'bg_color' => '#5C3D2E', 'bg_gradient' => 'linear-gradient(160deg,#3B2010 0%,#7A3B1E 50%,#A0522D 100%)', 'text_color' => '#FDF5E6', 'accent_color' => '#E07B54', 'border_style' => 'solid', 'border_width' => '3px', 'border_radius' => '16px', 'font_family' => 'Comic Neue'],
                 ['name' => 'Camping',   'bg_color' => '#0D1B2A', 'bg_gradient' => 'linear-gradient(180deg,#0D1B2A 0%,#1B4332 60%,#2D6A4F 100%)', 'text_color' => '#FFF8DC', 'accent_color' => '#FF6B35', 'border_style' => 'solid', 'border_width' => '3px', 'border_radius' => '14px', 'font_family' => 'Baloo 2'],
                 ['name' => 'Mountains', 'bg_color' => '#87CEEB', 'bg_gradient' => 'linear-gradient(180deg,#87CEEB 0%,#B0C4DE 45%,#8FA8C8 100%)', 'text_color' => '#1C2B3A', 'accent_color' => '#4A90D9', 'border_style' => 'solid', 'border_width' => '2px', 'border_radius' => '18px', 'font_family' => 'Quicksand'],
-                ['name' => 'Clouds',    'bg_color' => '#87CEEB', 'bg_gradient' => 'linear-gradient(180deg,#4FC3F7 0%,#B3E5FC 55%,#E1F5FE 100%)', 'text_color' => '#1A5276', 'accent_color' => '#29B6F6', 'border_style' => 'solid', 'border_width' => '2px', 'border_radius' => '20px', 'font_family' => 'Fredoka']
+                ['name' => 'Clouds',    'bg_color' => '#87CEEB', 'bg_gradient' => 'linear-gradient(180deg,#4FC3F7 0%,#B3E5FC 55%,#E1F5FE 100%)', 'text_color' => '#1A5276', 'accent_color' => '#29B6F6', 'border_style' => 'solid', 'border_width' => '2px', 'border_radius' => '20px', 'font_family' => 'Fredoka'],
+                ['name' => 'Unicorn',   'bg_color' => '#F9A8D4', 'bg_gradient' => 'linear-gradient(135deg,#F9A8D4 0%,#C084FC 50%,#818CF8 100%)', 'text_color' => '#4C1D95', 'accent_color' => '#E879F9', 'border_style' => 'solid', 'border_width' => '3px', 'border_radius' => '22px', 'font_family' => 'Fredoka']
             ];
             
             foreach ($defaultThemes as $theme) {

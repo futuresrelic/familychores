@@ -193,6 +193,7 @@ function runMigrations($db) {
         ['Camping',   '#0D1B2A', 'linear-gradient(180deg,#0D1B2A 0%,#1B4332 60%,#2D6A4F 100%)',  '#FFF8DC', '#FF6B35', 'solid', '3px', '14px', 'Baloo 2',   '#1F3D2B', 0.88, 14, '0 8px 24px rgba(0,0,0,0.35)', '#1F3D2B', 0.85, 16, '#1F3D2B', 0.92, 16, '', 1, 'embers'],
         ['Mountains', '#87CEEB', 'linear-gradient(180deg,#87CEEB 0%,#B0C4DE 45%,#8FA8C8 100%)',  '#1C2B3A', '#4A90D9', 'solid', '2px', '18px', 'Quicksand', '#FFFFFF', 0.90, 16, '0 6px 20px rgba(0,0,0,0.12)', '#FFFFFF', 0.88, 20, '#FFFFFF', 0.95, 20, '', 1, 'snowflakes'],
         ['Clouds',    '#87CEEB', 'linear-gradient(180deg,#4FC3F7 0%,#B3E5FC 55%,#E1F5FE 100%)',  '#1A5276', '#29B6F6', 'solid', '2px', '20px', 'Fredoka',   '#FFFFFF', 0.92, 10, '0 6px 20px rgba(0,0,0,0.08)', '#FFFFFF', 0.85, 18, '#FFFFFF', 0.95, 18, '', 1, 'bubbles'],
+        ['Unicorn',   '#F9A8D4', 'linear-gradient(135deg,#F9A8D4 0%,#C084FC 50%,#818CF8 100%)', '#4C1D95', '#E879F9', 'solid', '3px', '22px', 'Fredoka',   '#FFFFFF', 0.93, 12, '0 8px 28px rgba(192,132,252,0.25)', '#FFFFFF', 0.88, 18, '#FFFFFF', 0.95, 18, '', 1, 'sparkles'],
     ];
     $existing = array_column($db->query("SELECT name FROM themes")->fetchAll(PDO::FETCH_ASSOC), 'name');
     foreach ($newThemes as $t) {

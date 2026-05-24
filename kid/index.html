@@ -507,14 +507,20 @@
             <div style="margin-bottom: 20px;">
                 <label style="display:block;font-weight:600;margin-bottom:8px;color:#374151;font-size:14px;">🎨 Background</label>
                 <div id="bg-presets" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:10px;"></div>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <input type="color" id="bg-custom-color" value="#4F46E5"
-                        style="flex:1;height:44px;border:2px solid #E5E7EB;border-radius:8px;cursor:pointer;padding:3px;"
-                        title="Pick any colour">
-                    <button id="bg-reset-btn"
-                        style="padding:10px 14px;background:#F3F4F6;border:2px solid #E5E7EB;border-radius:8px;font-size:13px;font-weight:600;color:#6B7280;cursor:pointer;white-space:nowrap;">
-                        ↺ Theme
-                    </button>
+                <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+                        <canvas id="bg-color-wheel" width="130" height="130"
+                            style="border-radius:50%;cursor:crosshair;border:3px solid #E5E7EB;display:block;touch-action:none;"></canvas>
+                        <input type="range" id="bg-lightness" min="15" max="85" value="50"
+                            style="width:130px;accent-color:#6366F1;" title="Brightness">
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px;justify-content:center;">
+                        <div id="bg-color-preview" style="width:52px;height:52px;border-radius:10px;border:2px solid #E5E7EB;background:linear-gradient(135deg,#6366F1,#A78BFA);"></div>
+                        <button id="bg-reset-btn"
+                            style="padding:8px 10px;background:#F3F4F6;border:2px solid #E5E7EB;border-radius:8px;font-size:12px;font-weight:600;color:#6B7280;cursor:pointer;white-space:nowrap;">
+                            ↺ Reset
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -788,7 +794,42 @@
                 <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">Arctic</div>
                 <div style="font-size: 11px; color: #6B7280;">Freeze</div>
             </div>
-            
+
+            <!-- Mushrooms -->
+            <div class="theme-choice" data-theme="mushrooms" style="padding: 16px; border: 2px solid #E5E7EB; border-radius: 10px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <div style="font-size: 32px; margin-bottom: 8px;">🍄</div>
+                <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">Mushrooms</div>
+                <div style="font-size: 11px; color: #6B7280;">Forest Floor</div>
+            </div>
+
+            <!-- Camping -->
+            <div class="theme-choice" data-theme="camping" style="padding: 16px; border: 2px solid #E5E7EB; border-radius: 10px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <div style="font-size: 32px; margin-bottom: 8px;">🏕️</div>
+                <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">Camping</div>
+                <div style="font-size: 11px; color: #6B7280;">Campfire</div>
+            </div>
+
+            <!-- Mountains -->
+            <div class="theme-choice" data-theme="mountains" style="padding: 16px; border: 2px solid #E5E7EB; border-radius: 10px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <div style="font-size: 32px; margin-bottom: 8px;">⛰️</div>
+                <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">Mountains</div>
+                <div style="font-size: 11px; color: #6B7280;">Summit</div>
+            </div>
+
+            <!-- Clouds -->
+            <div class="theme-choice" data-theme="clouds" style="padding: 16px; border: 2px solid #E5E7EB; border-radius: 10px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <div style="font-size: 32px; margin-bottom: 8px;">☁️</div>
+                <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">Clouds</div>
+                <div style="font-size: 11px; color: #6B7280;">Sky High</div>
+            </div>
+
+            <!-- Unicorn -->
+            <div class="theme-choice" data-theme="unicorn" style="padding: 16px; border: 2px solid #E5E7EB; border-radius: 10px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <div style="font-size: 32px; margin-bottom: 8px;">🦄</div>
+                <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">Unicorn</div>
+                <div style="font-size: 11px; color: #6B7280;">Magic ✨</div>
+            </div>
+
         </div>
         
         <!-- Action Button -->
