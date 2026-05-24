@@ -2342,10 +2342,11 @@ function applyThemeStyling(theme) {
     const textColor = theme.textColor || '#1F2937';
     const isDark = theme.textColor ? true : false;
     
-    // Apply to app container with smooth gradient
+    // Apply to app container — respect custom bg override if set
     const appScreen = document.getElementById('app-screen');
     if (appScreen) {
-        appScreen.style.background = theme.bgGradient || theme.bgColor;
+        const _s = JSON.parse(localStorage.getItem('kid_settings') || '{}');
+        appScreen.style.background = _s.customBgColor || theme.bgGradient || theme.bgColor;
         appScreen.style.transition = 'all 0.3s ease';
         if (isDark) {
             appScreen.style.color = textColor;
@@ -2677,6 +2678,12 @@ async function loadSettingsFromServer() {
             result.settings.voice_pads.forEach(function(b64, i) {
                 if (b64) voiceRawData[i] = b64;
             });
+        }
+
+        // Restore custom background colour
+        if (result.settings.customBgColor) {
+            const appScreen = document.getElementById('app-screen');
+            if (appScreen) appScreen.style.background = result.settings.customBgColor;
         }
 
         // Merge with localStorage (server is authoritative)
@@ -3109,7 +3116,94 @@ function attachSettingsListeners() {
     const avatarBorderColor = document.getElementById('avatar-border-color');
     if (avatarBorderColor) {
         avatarBorderColor.addEventListener('input', updatePreview);
-    }    
+    }
+
+    // Background colour presets
+    initBgPicker();
+}
+
+// ============================================================
+// 🎨 BACKGROUND COLOUR PICKER
+// ============================================================
+
+const BG_PRESETS = [
+    { label:'🌅', value:'linear-gradient(135deg,#FF6B6B 0%,#FFD93D 100%)' },
+    { label:'🌊', value:'linear-gradient(135deg,#0EA5E9 0%,#6366F1 100%)' },
+    { label:'🌿', value:'linear-gradient(135deg,#10B981 0%,#1E293B 100%)' },
+    { label:'🌸', value:'linear-gradient(135deg,#EC4899 0%,#8B5CF6 100%)' },
+    { label:'🍊', value:'linear-gradient(135deg,#F97316 0%,#FBBF24 100%)' },
+    { label:'🌌', value:'linear-gradient(135deg,#1E293B 0%,#6366F1 100%)' },
+    { label:'🍬', value:'linear-gradient(135deg,#FF6B9D 0%,#C44EFF 50%,#4E9AFF 100%)' },
+    { label:'🌺', value:'linear-gradient(135deg,#FF6B35 0%,#FFD166 100%)' },
+    { label:'❄️', value:'linear-gradient(135deg,#BAE6FD 0%,#E0F2FE 100%)' },
+    { label:'🍉', value:'linear-gradient(135deg,#22C55E 0%,#EF4444 100%)' },
+    { label:'🌙', value:'linear-gradient(135deg,#0F172A 0%,#1E293B 100%)' },
+    { label:'🦄', value:'linear-gradient(135deg,#F9A8D4 0%,#C084FC 50%,#818CF8 100%)' },
+];
+
+function initBgPicker() {
+    const grid = document.getElementById('bg-presets');
+    if (!grid) return;
+
+    // Load current setting
+    const saved = JSON.parse(localStorage.getItem('kid_settings') || '{}');
+    const current = saved.customBgColor || null;
+
+    grid.innerHTML = BG_PRESETS.map(function(p, i) {
+        const active = current === p.value ? 'box-shadow:0 0 0 3px white,0 0 0 5px #6366F1;' : '';
+        return '<button data-bg-idx="'+i+'" title="'+p.label+'" style="'+
+            'aspect-ratio:1;border:none;border-radius:10px;cursor:pointer;'+
+            'background:'+p.value+';font-size:18px;'+active+
+            'transition:transform 0.1s,box-shadow 0.1s;" >'+p.label+'</button>';
+    }).join('');
+
+    grid.querySelectorAll('button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const preset = BG_PRESETS[parseInt(btn.dataset.bgIdx)];
+            applyCustomBg(preset.value);
+            // Highlight selected
+            grid.querySelectorAll('button').forEach(function(b) { b.style.boxShadow = ''; });
+            btn.style.boxShadow = '0 0 0 3px white,0 0 0 5px #6366F1';
+        });
+    });
+
+    // Custom colour picker
+    const picker = document.getElementById('bg-custom-color');
+    if (picker) {
+        if (current && !current.startsWith('linear')) picker.value = current;
+        picker.addEventListener('input', function() {
+            applyCustomBg(picker.value);
+            // Deselect all presets
+            grid.querySelectorAll('button').forEach(function(b) { b.style.boxShadow = ''; });
+        });
+    }
+
+    // Reset button
+    const resetBtn = document.getElementById('bg-reset-btn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            applyCustomBg(null);
+            grid.querySelectorAll('button').forEach(function(b) { b.style.boxShadow = ''; });
+        });
+    }
+}
+
+function applyCustomBg(bgValue) {
+    const appScreen = document.getElementById('app-screen');
+    const settings = JSON.parse(localStorage.getItem('kid_settings') || '{}');
+
+    if (bgValue) {
+        settings.customBgColor = bgValue;
+        if (appScreen) appScreen.style.background = bgValue;
+    } else {
+        delete settings.customBgColor;
+        // Re-apply the theme's own gradient
+        const theme = themes[settings.themeName];
+        if (appScreen) appScreen.style.background = theme ? (theme.bgGradient || theme.bgColor) : '';
+    }
+
+    localStorage.setItem('kid_settings', JSON.stringify(settings));
+    saveSettingsToServer(settings);
 }
 
 // Initialize

@@ -186,6 +186,20 @@ function runMigrations($db) {
         FOREIGN KEY (kid_user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (reviewer_id) REFERENCES users(id)
     )");
+
+    // Seed new themes if they don't exist yet
+    $newThemes = [
+        ['Mushrooms', '#5C3D2E', 'linear-gradient(160deg,#3B2010 0%,#7A3B1E 50%,#A0522D 100%)', '#FDF5E6', '#E07B54', 'solid', '3px', '16px', 'Comic Neue', '#FEF9F0', 0.93, 8, '0 8px 24px rgba(0,0,0,0.2)', '#FEF9F0', 0.9, 12, '#FEF9F0', 0.95, 12, '', 1, 'leaves'],
+        ['Camping',   '#0D1B2A', 'linear-gradient(180deg,#0D1B2A 0%,#1B4332 60%,#2D6A4F 100%)',  '#FFF8DC', '#FF6B35', 'solid', '3px', '14px', 'Baloo 2',   '#1F3D2B', 0.88, 14, '0 8px 24px rgba(0,0,0,0.35)', '#1F3D2B', 0.85, 16, '#1F3D2B', 0.92, 16, '', 1, 'embers'],
+        ['Mountains', '#87CEEB', 'linear-gradient(180deg,#87CEEB 0%,#B0C4DE 45%,#8FA8C8 100%)',  '#1C2B3A', '#4A90D9', 'solid', '2px', '18px', 'Quicksand', '#FFFFFF', 0.90, 16, '0 6px 20px rgba(0,0,0,0.12)', '#FFFFFF', 0.88, 20, '#FFFFFF', 0.95, 20, '', 1, 'snowflakes'],
+        ['Clouds',    '#87CEEB', 'linear-gradient(180deg,#4FC3F7 0%,#B3E5FC 55%,#E1F5FE 100%)',  '#1A5276', '#29B6F6', 'solid', '2px', '20px', 'Fredoka',   '#FFFFFF', 0.92, 10, '0 6px 20px rgba(0,0,0,0.08)', '#FFFFFF', 0.85, 18, '#FFFFFF', 0.95, 18, '', 1, 'bubbles'],
+    ];
+    $existing = array_column($db->query("SELECT name FROM themes")->fetchAll(PDO::FETCH_ASSOC), 'name');
+    foreach ($newThemes as $t) {
+        if (!in_array($t[0], $existing)) {
+            $db->prepare("INSERT INTO themes (name,bg_color,bg_gradient,text_color,accent_color,border_style,border_width,border_radius,font_family,card_bg_color,card_opacity,card_blur,card_shadow,header_bg_color,header_opacity,header_blur,nav_bg_color,nav_opacity,nav_blur,button_gradient,has_animation,animation_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute($t);
+        }
+    }
 }
 
 function getDb() {
