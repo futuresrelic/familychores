@@ -2543,124 +2543,161 @@ function getRewardEmoji(title) {
 // Point Economics
 async function loadPointEconomics() {
     const result = await apiCall('point_economics');
-    
+
     if (!result.ok) {
         document.getElementById('earning-potential-grid').innerHTML = '<p>Error loading data</p>';
         return;
     }
-    
-    const { chores, rewards, kid_count } = result.data;
-    
-    // Calculate earning potential
-    let dailyPotential = 0;
-    let weeklyPotential = 0;
-    let monthlyPotential = 0;
-    
-    chores.forEach(chore => {
-        const timesPerKid = chore.assigned_count; // Number of kids assigned
-        
-        switch(chore.recurrence_type) {
-            case 'daily':
-                dailyPotential += chore.default_points * timesPerKid;
-                weeklyPotential += chore.default_points * timesPerKid * 7;
-                monthlyPotential += chore.default_points * timesPerKid * 30;
-                break;
-            case 'weekly':
-                weeklyPotential += chore.default_points * timesPerKid;
-                monthlyPotential += chore.default_points * timesPerKid * 4;
-                break;
-            case 'monthly':
-                monthlyPotential += chore.default_points * timesPerKid;
-                break;
-            case 'once':
-                // One-time chores counted toward monthly potential
-                monthlyPotential += chore.default_points * timesPerKid;
-                break;
-        }
-    });
-    
-    // Display earning potential
+
+    const { chores, rewards, kid_count, per_kid } = result.data;
+
+    // ── Per-kid actual earning potential ──────────────────────────────────────
+    // Each kid row has daily_pts / weekly_pts / monthly_pts / once_pts from the
+    // chores *directly assigned* to that kid only (no quest / collective data).
+    function kidMonthly(k) {
+        return (k.daily_pts * 30) + (k.weekly_pts * 4.3) + k.monthly_pts + k.once_pts;
+    }
+    function kidWeekly(k) {
+        return (k.daily_pts * 7) + k.weekly_pts;
+    }
+
+    // Summary totals across all kids (correct: sum of per-kid, not chore×assigned_count)
+    const totalDaily   = per_kid.reduce((s, k) => s + Number(k.daily_pts),  0);
+    const totalWeekly  = per_kid.reduce((s, k) => s + kidWeekly(k),          0);
+    const totalMonthly = per_kid.reduce((s, k) => s + kidMonthly(k),         0);
+
+    const avgDaily   = kid_count > 0 ? Math.round(totalDaily   / kid_count) : 0;
+    const avgMonthly = kid_count > 0 ? Math.round(totalMonthly / kid_count) : 0;
+
+    // ── Summary cards ─────────────────────────────────────────────────────────
     document.getElementById('earning-potential-grid').innerHTML = `
         <div class="earning-potential-card">
-            <div class="period">Per Day</div>
-            <div class="amount">${dailyPotential}</div>
-            <div class="label">max points/day</div>
+            <div class="period">Per Kid / Day</div>
+            <div class="amount">${avgDaily}</div>
+            <div class="label">avg across kids (daily chores)</div>
         </div>
         <div class="earning-potential-card">
-            <div class="period">Per Week</div>
-            <div class="amount">${weeklyPotential}</div>
-            <div class="label">max points/week</div>
+            <div class="period">Family / Day</div>
+            <div class="amount">${totalDaily}</div>
+            <div class="label">all kids combined daily max</div>
         </div>
         <div class="earning-potential-card">
-            <div class="period">Per Month</div>
-            <div class="amount">${monthlyPotential}</div>
-            <div class="label">max points/month</div>
+            <div class="period">Family / Week</div>
+            <div class="amount">${Math.round(totalWeekly)}</div>
+            <div class="label">daily × 7 + weekly chores</div>
         </div>
         <div class="earning-potential-card" style="border-color: #10B981;">
-            <div class="period">Per Kid/Month</div>
-            <div class="amount" style="color: #10B981;">${kid_count > 0 ? Math.round(monthlyPotential / kid_count) : 0}</div>
-            <div class="label">average if all complete</div>
+            <div class="period">Per Kid / Month</div>
+            <div class="amount" style="color: #10B981;">${avgMonthly}</div>
+            <div class="label">avg if all chores done every day</div>
         </div>
     `;
-    
-    // Display chore values
-    const choreValuesHtml = chores.map(chore => {
-        const freqClass = `freq-${chore.recurrence_type}`;
-        const freqLabel = chore.recurrence_type.charAt(0).toUpperCase() + chore.recurrence_type.slice(1);
-        
+
+    // ── Per-kid breakdown ─────────────────────────────────────────────────────
+    const perKidEl = document.getElementById('per-kid-economics');
+    if (perKidEl) {
+        if (!per_kid || per_kid.length === 0) {
+            perKidEl.innerHTML = '<p style="color:#6B7280;">No kids yet.</p>';
+        } else {
+            const rows = per_kid.map(k => {
+                const wk = kidWeekly(k);
+                const mo = kidMonthly(k);
+                // Days needed to afford each reward (based on daily earning only)
+                const fastestRewardDays = (rewards.length > 0 && k.daily_pts > 0)
+                    ? Math.ceil(rewards[0].cost_points / k.daily_pts)
+                    : '—';
+                return `
+                <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                        <div style="font-weight:700;font-size:15px;color:#1F2937;">${k.kid_name}</div>
+                        <div style="font-size:12px;color:#6B7280;">${k.chore_count} chore${k.chore_count == 1 ? '' : 's'} assigned</div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;">
+                        <div style="text-align:center;background:#EFF6FF;border-radius:8px;padding:8px 4px;">
+                            <div style="font-size:20px;font-weight:700;color:#2563EB;">${k.daily_pts}</div>
+                            <div style="font-size:11px;color:#3B82F6;">pts / day</div>
+                        </div>
+                        <div style="text-align:center;background:#F0FDF4;border-radius:8px;padding:8px 4px;">
+                            <div style="font-size:20px;font-weight:700;color:#16A34A;">${Math.round(wk)}</div>
+                            <div style="font-size:11px;color:#22C55E;">pts / week</div>
+                        </div>
+                        <div style="text-align:center;background:#FFF7ED;border-radius:8px;padding:8px 4px;">
+                            <div style="font-size:20px;font-weight:700;color:#EA580C;">${Math.round(mo)}</div>
+                            <div style="font-size:11px;color:#F97316;">pts / month</div>
+                        </div>
+                    </div>
+                    ${k.daily_pts > 0 && rewards.length > 0 ? `
+                    <div style="margin-top:8px;font-size:12px;color:#6B7280;">
+                        🎁 Cheapest reward (<strong>${rewards[0].title}</strong> · ${rewards[0].cost_points} pts) in
+                        <strong>${fastestRewardDays} day${fastestRewardDays == 1 ? '' : 's'}</strong> of daily chores
+                    </div>` : (k.daily_pts == 0 ? '<div style="margin-top:8px;font-size:12px;color:#F59E0B;">⚠️ No daily chores assigned — no daily earning</div>' : '')}
+                </div>`;
+            }).join('');
+            perKidEl.innerHTML = rows;
+        }
+    }
+
+    // ── Chore values list ─────────────────────────────────────────────────────
+    const freqOrder = { daily: 0, weekly: 1, monthly: 2, once: 3 };
+    const freqLabel = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', once: 'One-time' };
+    const sortedChores = [...chores].sort((a, b) =>
+        (freqOrder[a.recurrence_type] ?? 9) - (freqOrder[b.recurrence_type] ?? 9) ||
+        b.default_points - a.default_points
+    );
+
+    const choreValuesHtml = sortedChores.map(chore => {
+        const freq = chore.recurrence_type;
+        const freqClass = `freq-${freq}`;
+        const lbl = freqLabel[freq] || freq;
+        // Show what this chore earns per week if done consistently
+        const weeklyEarn = freq === 'daily'   ? chore.default_points * 7
+                         : freq === 'weekly'  ? chore.default_points
+                         : freq === 'monthly' ? Math.round(chore.default_points / 4.3)
+                         : 0;
         return `
             <div class="chore-value-row">
                 <div class="chore-info">
                     <div class="chore-title">${chore.title}</div>
                     <div class="chore-meta">
-                        <span class="frequency-badge ${freqClass}">${freqLabel}</span>
-                        Assigned to ${chore.assigned_count} kid${chore.assigned_count === 1 ? '' : 's'}
+                        <span class="frequency-badge ${freqClass}">${lbl}</span>
+                        ${chore.assigned_count} kid${chore.assigned_count == 1 ? '' : 's'} assigned
+                        ${weeklyEarn > 0 ? `· <strong>${weeklyEarn} pts/wk</strong> per kid` : ''}
                     </div>
                 </div>
                 <div class="points-badge">${chore.default_points} pts</div>
-            </div>
-        `;
+            </div>`;
     }).join('');
-    
-    document.getElementById('chore-values-list').innerHTML = choreValuesHtml || '<p style="color: #6B7280;">No chores created yet</p>';
-    
-    // Build chore-to-reward matrix
+
+    document.getElementById('chore-values-list').innerHTML =
+        choreValuesHtml || '<p style="color: #6B7280;">No chores created yet</p>';
+
+    // ── Chore × Reward matrix ─────────────────────────────────────────────────
     if (chores.length === 0 || rewards.length === 0) {
-        document.getElementById('chore-reward-matrix').innerHTML = '<p style="color: #6B7280;">Create chores and rewards to see the matrix</p>';
+        document.getElementById('chore-reward-matrix').innerHTML =
+            '<p style="color: #6B7280;">Create chores and rewards to see the matrix</p>';
         return;
     }
-    
+
     let matrixHtml = '<table class="matrix-table"><thead><tr>';
     matrixHtml += '<th class="chore-name-col">Chore</th>';
-    
-    rewards.forEach(reward => {
-        matrixHtml += `<th>${reward.title}<br><span style="font-weight: normal; font-size: 12px;">${reward.cost_points} pts</span></th>`;
+    rewards.forEach(r => {
+        matrixHtml += `<th>${r.title}<br><span style="font-weight:normal;font-size:12px;">${r.cost_points} pts</span></th>`;
     });
-    
     matrixHtml += '</tr></thead><tbody>';
-    
-    chores.forEach(chore => {
+
+    sortedChores.forEach(chore => {
         matrixHtml += '<tr>';
-        matrixHtml += `<td class="chore-name-col">${chore.title} <span style="color: #6B7280; font-weight: normal;">(${chore.default_points} pts)</span></td>`;
-        
+        matrixHtml += `<td class="chore-name-col">${chore.title} <span style="color:#6B7280;font-weight:normal;">(${chore.default_points} pts · ${freqLabel[chore.recurrence_type] || chore.recurrence_type})</span></td>`;
         rewards.forEach(reward => {
             const timesNeeded = Math.ceil(reward.cost_points / chore.default_points);
-            
-            let cellClass = '';
-            if (timesNeeded === 1) cellClass = 'easy';
-            else if (timesNeeded <= 5) cellClass = 'easy';
-            else if (timesNeeded <= 15) cellClass = 'medium';
-            else if (timesNeeded <= 50) cellClass = 'hard';
-            else cellClass = 'impossible';
-            
+            // How many days does this take, given recurrence?
+            let cellClass = timesNeeded <= 5 ? 'easy' : timesNeeded <= 15 ? 'medium' : timesNeeded <= 50 ? 'hard' : 'impossible';
             matrixHtml += `<td><span class="matrix-cell ${cellClass}">${timesNeeded}×</span></td>`;
         });
-        
         matrixHtml += '</tr>';
     });
-    
+
     matrixHtml += '</tbody></table>';
-    
     document.getElementById('chore-reward-matrix').innerHTML = matrixHtml;
 }
 

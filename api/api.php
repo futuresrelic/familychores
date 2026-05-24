@@ -2034,29 +2034,51 @@ case 'kid_feed':
         $familyId = getAdminFamilyId();
         $db = getDb();
 
+        // Chore list with assignment counts
         $stmt = $db->prepare("
             SELECT c.id, c.title, c.recurrence_type, c.default_points,
                 COUNT(kc.id) as assigned_count
             FROM chores c
             LEFT JOIN kid_chores kc ON c.id = kc.chore_id
             WHERE c.family_id = ?
-            GROUP BY c.id ORDER BY c.default_points DESC
+            GROUP BY c.id ORDER BY c.recurrence_type, c.default_points DESC
         ");
         $stmt->execute([$familyId]);
         $chores = $stmt->fetchAll();
 
+        // Active rewards
         $stmt = $db->prepare("SELECT id, title, cost_points FROM rewards WHERE is_active = 1 AND family_id = ? ORDER BY cost_points ASC");
         $stmt->execute([$familyId]);
         $rewards = $stmt->fetchAll();
 
+        // Non-test kid count
         $stmt = $db->prepare("SELECT COUNT(*) as kid_count FROM users WHERE role = 'kid' AND family_id = ? AND COALESCE(is_test_account, 0) = 0");
         $stmt->execute([$familyId]);
         $kidCount = $stmt->fetch()['kid_count'];
-        
+
+        // Per-kid earning potential: only chores directly assigned to each kid
+        $stmt = $db->prepare("
+            SELECT u.id, u.kid_name,
+                COALESCE(SUM(CASE WHEN c.recurrence_type = 'daily'   THEN c.default_points ELSE 0 END), 0) AS daily_pts,
+                COALESCE(SUM(CASE WHEN c.recurrence_type = 'weekly'  THEN c.default_points ELSE 0 END), 0) AS weekly_pts,
+                COALESCE(SUM(CASE WHEN c.recurrence_type = 'monthly' THEN c.default_points ELSE 0 END), 0) AS monthly_pts,
+                COALESCE(SUM(CASE WHEN c.recurrence_type = 'once'    THEN c.default_points ELSE 0 END), 0) AS once_pts,
+                COUNT(kc.id) AS chore_count
+            FROM users u
+            LEFT JOIN kid_chores kc ON u.id = kc.kid_user_id
+            LEFT JOIN chores c ON kc.chore_id = c.id AND c.family_id = ?
+            WHERE u.role = 'kid' AND u.family_id = ? AND COALESCE(u.is_test_account, 0) = 0
+            GROUP BY u.id, u.kid_name
+            ORDER BY u.kid_name
+        ");
+        $stmt->execute([$familyId, $familyId]);
+        $perKid = $stmt->fetchAll();
+
         jsonResponse(true, [
-            'chores' => $chores,
-            'rewards' => $rewards,
-            'kid_count' => $kidCount
+            'chores'    => $chores,
+            'rewards'   => $rewards,
+            'kid_count' => $kidCount,
+            'per_kid'   => $perKid,
         ]);
         break;
         
