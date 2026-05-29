@@ -1890,9 +1890,10 @@ case 'kid_feed':
         SELECT s.*, c.title as chore_title
         FROM submissions s
         JOIN chores c ON s.chore_id = c.id
-        WHERE s.kid_user_id = ? 
-          AND (s.status = 'pending' OR DATE(s.submitted_at) = DATE('now'))
+        WHERE s.kid_user_id = ?
+          AND (s.status = 'pending' OR s.status = 'revoked' OR DATE(s.submitted_at) = DATE('now'))
         ORDER BY s.submitted_at DESC
+        LIMIT 50
     ");
     $stmt->execute([$kid['kid_user_id']]);
     $submissions = $stmt->fetchAll();

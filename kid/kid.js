@@ -7109,26 +7109,3 @@ function initPads() {
     if (target.style.display !== 'none') { inited = true; initPads(); }
 })();
 
-// ── KID PENALTIES ──────────────────────────────────────────────────────────
-
-async function loadKidPenalties() {
-    const section = document.getElementById('penalties-section');
-    const list = document.getElementById('penalties-list-kid');
-    if (!section || !list) return;
-    const result = await apiCall('kid_list_penalties');
-    if (!result.ok || !result.data.length) {
-        section.style.display = 'none';
-        return;
-    }
-    section.style.display = 'block';
-    list.innerHTML = result.data.map(p => `
-        <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-            <div>
-                <div style="font-weight:700;color:#DC2626;">⚠️ ${p.title}</div>
-                ${p.note ? `<div style="font-size:12px;color:#6B7280;margin-top:2px;">${p.note}</div>` : ''}
-                <div style="font-size:11px;color:#9CA3AF;margin-top:2px;">${formatDate(p.applied_at)}</div>
-            </div>
-            <div style="font-size:18px;font-weight:800;color:#DC2626;white-space:nowrap;">-${p.points_deducted} pts</div>
-        </div>
-    `).join('');
-}
