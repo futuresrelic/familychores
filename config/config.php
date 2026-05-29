@@ -187,6 +187,39 @@ function runMigrations($db) {
         FOREIGN KEY (reviewer_id) REFERENCES users(id)
     )");
 
+    // revoke_reason column on submissions
+    $subCols = array_column($db->query("PRAGMA table_info(submissions)")->fetchAll(PDO::FETCH_ASSOC), 'name');
+    if (!in_array('revoke_reason', $subCols)) $db->exec("ALTER TABLE submissions ADD COLUMN revoke_reason TEXT");
+
+    // penalties table
+    $db->exec("CREATE TABLE IF NOT EXISTS penalties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        family_id INTEGER NOT NULL DEFAULT 1,
+        title TEXT NOT NULL,
+        description TEXT,
+        points_cost INTEGER NOT NULL DEFAULT 10,
+        is_active INTEGER DEFAULT 1,
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        FOREIGN KEY (family_id) REFERENCES families(id)
+    )");
+
+    // kid_penalties table
+    $db->exec("CREATE TABLE IF NOT EXISTS kid_penalties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kid_user_id INTEGER NOT NULL,
+        penalty_id INTEGER,
+        title TEXT NOT NULL,
+        points_deducted INTEGER NOT NULL,
+        applied_by INTEGER,
+        note TEXT,
+        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (kid_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (penalty_id) REFERENCES penalties(id) ON DELETE SET NULL,
+        FOREIGN KEY (applied_by) REFERENCES users(id)
+    )");
+
     // Seed new themes if they don't exist yet
     $newThemes = [
         ['Mushrooms', '#5C3D2E', 'linear-gradient(160deg,#3B2010 0%,#7A3B1E 50%,#A0522D 100%)', '#FDF5E6', '#E07B54', 'solid', '3px', '16px', 'Comic Neue', '#FEF9F0', 0.93, 8, '0 8px 24px rgba(0,0,0,0.2)', '#FEF9F0', 0.9, 12, '#FEF9F0', 0.95, 12, '', 1, 'mushrooms'],

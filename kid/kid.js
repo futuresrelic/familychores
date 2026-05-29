@@ -274,6 +274,31 @@ async function loadChores() {
         renderChores(result.data.chores, result.data.submissions || []);
     }
     reapplyCurrentTheme();
+    loadKidPenalties();
+}
+
+async function loadKidPenalties() {
+    const result = await apiCall('kid_list_penalties');
+    const section = document.getElementById('penalties-section');
+    const list = document.getElementById('penalties-list-kid');
+    if (!section || !list) return;
+    if (!result.ok || !result.data || result.data.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+    section.style.display = 'block';
+    list.innerHTML = result.data.map(p => `
+        <div style="background:#FEF2F2;border:2px solid #FECACA;border-radius:12px;padding:14px 16px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <div>
+                    <strong style="color:#DC2626;">⚠️ ${p.title}</strong>
+                    ${p.note ? `<p style="margin:4px 0 0;color:#6B7280;font-size:13px;">${p.note}</p>` : ''}
+                </div>
+                <span style="color:#DC2626;font-weight:700;white-space:nowrap;margin-left:12px;">-${p.points_deducted} pts</span>
+            </div>
+            <p style="margin:6px 0 0;color:#9CA3AF;font-size:11px;">${new Date(p.applied_at).toLocaleDateString()}</p>
+        </div>
+    `).join('');
 }
 
 function renderChores(chores, submissions = []) {
@@ -902,19 +927,20 @@ function renderChoresHistory(submissions) {
     }
     
     const html = submissions.map(sub => `
-        <div class="card" style="margin-bottom: 15px;">
+        <div class="card" style="margin-bottom: 15px;${sub.status === 'revoked' ? 'border-left:4px solid #EF4444;' : ''}">
             <div class="history-date">${formatDate(sub.submitted_at)}</div>
             <div class="card-title">${sub.chore_title}</div>
             ${sub.note ? `<div class="card-description">"${sub.note}"</div>` : ''}
             <div class="card-meta" style="margin-top: 10px;">
-                <span class="badge badge-${sub.status}">
-                    ${sub.status === 'approved' ? '✅ APPROVED' : sub.status === 'pending' ? '⏳ PENDING' : '❌ REJECTED'}
+                <span class="badge badge-${sub.status === 'revoked' ? 'danger' : sub.status}">
+                    ${sub.status === 'approved' ? '✅ APPROVED' : sub.status === 'pending' ? '⏳ PENDING' : sub.status === 'revoked' ? '🚫 REVOKED' : '❌ REJECTED'}
                 </span>
                 ${sub.status === 'approved' ? `<span class="badge badge-primary">+${sub.points_awarded} points</span>` : ''}
             </div>
+            ${sub.status === 'revoked' && sub.revoke_reason ? `<div class="card-description" style="color:#DC2626;margin-top:6px;">Reason: ${sub.revoke_reason}</div>` : ''}
         </div>
     `).join('');
-    
+
     container.innerHTML = html;
 }
 
@@ -7082,3 +7108,27 @@ function initPads() {
     obs.observe(target, { attributes: true, attributeFilter: ['style'] });
     if (target.style.display !== 'none') { inited = true; initPads(); }
 })();
+
+// ── KID PENALTIES ──────────────────────────────────────────────────────────
+
+async function loadKidPenalties() {
+    const section = document.getElementById('penalties-section');
+    const list = document.getElementById('penalties-list-kid');
+    if (!section || !list) return;
+    const result = await apiCall('kid_list_penalties');
+    if (!result.ok || !result.data.length) {
+        section.style.display = 'none';
+        return;
+    }
+    section.style.display = 'block';
+    list.innerHTML = result.data.map(p => `
+        <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <div style="font-weight:700;color:#DC2626;">⚠️ ${p.title}</div>
+                ${p.note ? `<div style="font-size:12px;color:#6B7280;margin-top:2px;">${p.note}</div>` : ''}
+                <div style="font-size:11px;color:#9CA3AF;margin-top:2px;">${formatDate(p.applied_at)}</div>
+            </div>
+            <div style="font-size:18px;font-weight:800;color:#DC2626;white-space:nowrap;">-${p.points_deducted} pts</div>
+        </div>
+    `).join('');
+}

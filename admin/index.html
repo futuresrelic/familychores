@@ -85,6 +85,7 @@
             <button class="tab-btn" data-tab="collective">🌟 Collective</button>
             <button class="tab-btn" data-tab="rewards">Rewards</button>
             <button class="tab-btn" data-tab="submissions">Submissions</button>
+            <button class="tab-btn" data-tab="penalties">⚠️ Penalties</button>
             <button class="tab-btn" data-tab="quest-tasks">Quest Tasks</button>
             <button class="tab-btn" data-tab="themes">Themes</button>
             <button class="tab-btn" data-tab="games">🎮 Games</button>
@@ -260,8 +261,58 @@
                     <button class="filter-btn active" data-status="pending">Pending</button>
                     <button class="filter-btn" data-status="approved">Approved</button>
                     <button class="filter-btn" data-status="rejected">Rejected</button>
+                    <button class="filter-btn" data-status="revoked">🚫 Revoked</button>
                 </div>
                 <div id="submissions-list" class="list-container"></div>
+            </section>
+
+            <!-- Penalties Tab -->
+            <section id="tab-penalties" class="tab-content">
+                <div class="section-header">
+                    <h2>⚠️ Penalties</h2>
+                    <button class="primary-btn" onclick="showCreatePenaltyModal()">+ New Penalty Rule</button>
+                </div>
+                <p style="color:#6B7280;margin-bottom:24px;">Create penalty rules and apply them to kids. Points are deducted immediately and kids see the reason.</p>
+
+                <h3 style="margin:0 0 14px;">📋 Penalty Rules</h3>
+                <div id="penalties-list" style="margin-bottom:36px;"></div>
+
+                <h3 style="margin:0 0 14px;">🎯 Apply a Penalty</h3>
+                <div id="apply-penalty-form" style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:20px;margin-bottom:36px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                        <div>
+                            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px;">Kid</label>
+                            <select id="penalty-kid-select" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:8px;">
+                                <option value="">— select kid —</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px;">Penalty Rule</label>
+                            <select id="penalty-rule-select" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:8px;" onchange="onPenaltyRuleChange()">
+                                <option value="">— select rule or custom —</option>
+                                <option value="custom">✏️ Custom penalty</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="penalty-custom-fields" style="display:none;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px;">
+                        <div>
+                            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px;">Reason</label>
+                            <input id="penalty-custom-title" type="text" placeholder="e.g. Shoving a sibling" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:8px;box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px;">Points</label>
+                            <input id="penalty-custom-points" type="number" min="1" placeholder="50" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:8px;box-sizing:border-box;">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:14px;">
+                        <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px;">Note <span style="font-weight:normal;color:#9CA3AF;">(optional)</span></label>
+                        <input id="penalty-note" type="text" placeholder="e.g. Happened at dinner time" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:8px;box-sizing:border-box;">
+                    </div>
+                    <button class="danger-btn" onclick="applyPenaltyToKid()">⚠️ Apply Penalty &amp; Deduct Points</button>
+                </div>
+
+                <h3 style="margin:0 0 14px;">📜 Penalty History</h3>
+                <div id="penalty-history-list"></div>
             </section>
 
             <!-- Quest Tasks Tab -->

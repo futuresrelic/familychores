@@ -67,8 +67,9 @@ CREATE TABLE IF NOT EXISTS submissions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kid_user_id INTEGER NOT NULL,
     chore_id INTEGER NOT NULL,
-    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'revoked')),
     note TEXT,
+    revoke_reason TEXT,
     submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     reviewed_at DATETIME,
     reviewer_id INTEGER,
@@ -268,6 +269,35 @@ CREATE TABLE IF NOT EXISTS collective_task_completions (
     FOREIGN KEY (task_id) REFERENCES collective_quest_tasks(id) ON DELETE CASCADE,
     FOREIGN KEY (kid_user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (reviewer_id) REFERENCES users(id)
+);
+
+-- Penalties (named penalty rules)
+CREATE TABLE IF NOT EXISTS penalties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    family_id INTEGER NOT NULL DEFAULT 1,
+    title TEXT NOT NULL,
+    description TEXT,
+    points_cost INTEGER NOT NULL DEFAULT 10,
+    is_active INTEGER DEFAULT 1,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (family_id) REFERENCES families(id)
+);
+
+-- Kid penalties (applied penalty instances)
+CREATE TABLE IF NOT EXISTS kid_penalties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kid_user_id INTEGER NOT NULL,
+    penalty_id INTEGER,
+    title TEXT NOT NULL,
+    points_deducted INTEGER NOT NULL,
+    applied_by INTEGER,
+    note TEXT,
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (kid_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (penalty_id) REFERENCES penalties(id) ON DELETE SET NULL,
+    FOREIGN KEY (applied_by) REFERENCES users(id)
 );
 
 -- Seed data: Admin password is 'changeme'

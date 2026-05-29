@@ -125,6 +125,11 @@ async function loadTabData(tabName) {
         case 'setup-wizard':
             loadWizard();
             break;
+        case 'penalties':
+            loadPenalties();
+            loadPenaltyKidSelect();
+            loadPenaltyHistory();
+            break;
     }
 }
 
@@ -826,24 +831,42 @@ async function loadSubmissions(status) {
     const result = await apiCall('list_submissions', { status });
     if (result.ok) {
         const html = result.data.map(sub => `
-            <div class="list-item">
+            <div class="list-item" ${sub.status === 'revoked' ? 'style="border-left:4px solid #EF4444;"' : ''}>
                 <div class="list-item-info">
-                    <h4>${sub.kid_name} - ${sub.chore_title}</h4>
+                    <h4>${sub.kid_name} — ${sub.chore_title}</h4>
                     <p>Submitted: ${formatDate(sub.submitted_at)}</p>
                     ${sub.note ? `<p><em>"${sub.note}"</em></p>` : ''}
-                    ${sub.status !== 'pending' ? `<p>Points: ${sub.points_awarded}</p>` : ''}
+                    ${sub.status === 'approved' ? `<p><strong style="color:#10B981;">+${sub.points_awarded} pts awarded</strong></p>` : ''}
+                    ${sub.status === 'revoked' ? `<p><strong style="color:#EF4444;">🚫 Revoked — ${sub.revoke_reason || 'No reason given'}</strong></p>` : ''}
                 </div>
                 <div class="list-item-actions">
                     ${sub.status === 'pending' ? `
                         <button class="success-btn small-btn" onclick="reviewSubmission(${sub.id}, 'approved', ${sub.chore_id})">Approve</button>
                         <button class="danger-btn small-btn" onclick="reviewSubmission(${sub.id}, 'rejected')">Reject</button>
+                    ` : sub.status === 'approved' ? `
+                        <span class="badge badge-success">approved</span>
+                        <button class="danger-btn small-btn" onclick="revokeSubmission(${sub.id}, '${sub.kid_name.replace(/'/g, "\\'")}', ${sub.points_awarded})">🚫 Revoke</button>
                     ` : `
-                        <span class="badge badge-${sub.status === 'approved' ? 'success' : 'danger'}">${sub.status}</span>
+                        <span class="badge badge-danger">${sub.status}</span>
                     `}
                 </div>
             </div>
         `).join('');
         document.getElementById('submissions-list').innerHTML = html || `<p>No ${status} submissions</p>`;
+    }
+}
+
+async function revokeSubmission(submissionId, kidName, pointsAwarded) {
+    const reason = prompt(`Reason for revoking ${kidName}'s submission? (This will be shown to them)`, 'Chore not completed correctly');
+    if (reason === null) return; // cancelled
+    if (!confirm(`Revoke this submission? ${pointsAwarded} points will be deducted from ${kidName} and the chore will be put back.`)) return;
+    const result = await apiCall('revoke_submission', { submission_id: submissionId, reason: reason || 'Revoked by admin' });
+    if (result.ok) {
+        showSuccess(`Revoked. ${result.data.points_deducted} points deducted from ${kidName}.`);
+        loadSubmissions(currentSubmissionsStatus);
+        loadDashboard();
+    } else {
+        showError(result.error);
     }
 }
 
@@ -2699,6 +2722,155 @@ async function loadPointEconomics() {
 
     matrixHtml += '</tbody></table>';
     document.getElementById('chore-reward-matrix').innerHTML = matrixHtml;
+}
+
+// ── PENALTIES ──────────────────────────────────────────────────────────────
+
+async function loadPenalties() {
+    const result = await apiCall('list_penalties');
+    const el = document.getElementById('penalties-list');
+    if (!el) return;
+    if (!result.ok || !result.data.length) {
+        el.innerHTML = '<p style="color:#6B7280;">No penalty rules yet. Create one above to get started.</p>';
+        return;
+    }
+    el.innerHTML = result.data.map(p => `
+        <div class="list-item" style="border-left:4px solid ${p.is_active ? '#EF4444' : '#D1D5DB'};">
+            <div class="list-item-info">
+                <h4 style="display:flex;align-items:center;gap:8px;">
+                    ${p.title}
+                    ${!p.is_active ? '<span style="font-size:11px;background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:20px;">Inactive</span>' : ''}
+                </h4>
+                ${p.description ? `<p style="color:#6B7280;">${p.description}</p>` : ''}
+                <p><strong style="color:#EF4444;">-${p.points_cost} points</strong></p>
+            </div>
+            <div class="list-item-actions">
+                <button class="secondary-btn small-btn" onclick="togglePenalty(${p.id})">${p.is_active ? 'Deactivate' : 'Activate'}</button>
+                <button class="danger-btn small-btn" onclick="deletePenalty(${p.id})">Delete</button>
+            </div>
+        </div>
+    `).join('');
+    // Refresh rule dropdown
+    loadPenaltyRuleSelect(result.data);
+}
+
+async function loadPenaltyKidSelect() {
+    const result = await apiCall('list_kids');
+    const sel = document.getElementById('penalty-kid-select');
+    if (!sel || !result.ok) return;
+    sel.innerHTML = '<option value="">— select kid —</option>' +
+        result.data.map(k => `<option value="${k.id}">${k.kid_name}</option>`).join('');
+}
+
+function loadPenaltyRuleSelect(penalties) {
+    const sel = document.getElementById('penalty-rule-select');
+    if (!sel) return;
+    const active = penalties.filter(p => p.is_active);
+    sel.innerHTML = '<option value="">— select rule or custom —</option>' +
+        '<option value="custom">✏️ Custom penalty</option>' +
+        active.map(p => `<option value="${p.id}" data-pts="${p.points_cost}">⚠️ ${p.title} (-${p.points_cost} pts)</option>`).join('');
+}
+
+function onPenaltyRuleChange() {
+    const sel = document.getElementById('penalty-rule-select');
+    const custom = document.getElementById('penalty-custom-fields');
+    if (!sel || !custom) return;
+    custom.style.display = sel.value === 'custom' ? 'grid' : 'none';
+}
+
+function showCreatePenaltyModal() {
+    const title = prompt('Penalty name (e.g. "Shoving"):');
+    if (!title) return;
+    const pts = parseInt(prompt(`Points deducted for "${title}":`));
+    if (!pts || pts <= 0) { alert('Enter a positive number of points'); return; }
+    const desc = prompt('Description (optional, press Enter to skip):') || '';
+    createPenalty(title.trim(), desc.trim(), pts);
+}
+
+async function createPenalty(title, description, points_cost) {
+    const result = await apiCall('create_penalty', { title, description, points_cost });
+    if (result.ok) {
+        showSuccess('Penalty rule created!');
+        loadPenalties();
+    } else {
+        showError(result.error);
+    }
+}
+
+async function togglePenalty(penaltyId) {
+    const result = await apiCall('toggle_penalty', { penalty_id: penaltyId });
+    if (result.ok) loadPenalties();
+    else showError(result.error);
+}
+
+async function deletePenalty(penaltyId) {
+    if (!confirm('Delete this penalty rule? Applied history is kept.')) return;
+    const result = await apiCall('delete_penalty', { penalty_id: penaltyId });
+    if (result.ok) { showSuccess('Deleted'); loadPenalties(); }
+    else showError(result.error);
+}
+
+async function applyPenaltyToKid() {
+    const kidId = parseInt(document.getElementById('penalty-kid-select').value);
+    const ruleSelect = document.getElementById('penalty-rule-select');
+    const note = document.getElementById('penalty-note').value.trim();
+
+    if (!kidId) { showError('Please select a kid'); return; }
+
+    let payload = { kid_id: kidId, note };
+
+    if (ruleSelect.value === 'custom') {
+        const customTitle = document.getElementById('penalty-custom-title').value.trim();
+        const customPts = parseInt(document.getElementById('penalty-custom-points').value);
+        if (!customTitle || !customPts || customPts <= 0) { showError('Enter reason and points for custom penalty'); return; }
+        payload.custom_title = customTitle;
+        payload.custom_points = customPts;
+    } else if (ruleSelect.value) {
+        payload.penalty_id = parseInt(ruleSelect.value);
+    } else {
+        showError('Select a penalty rule or choose custom');
+        return;
+    }
+
+    const kidName = document.getElementById('penalty-kid-select').selectedOptions[0].text;
+    const ruleText = ruleSelect.value === 'custom'
+        ? `"${payload.custom_title}" (-${payload.custom_points} pts)`
+        : ruleSelect.selectedOptions[0].text;
+
+    if (!confirm(`Apply ${ruleText} to ${kidName}? Points will be deducted immediately.`)) return;
+
+    const result = await apiCall('apply_penalty', payload);
+    if (result.ok) {
+        showSuccess(`Penalty applied. ${result.data.points_deducted} points deducted from ${kidName}.`);
+        document.getElementById('penalty-note').value = '';
+        loadPenaltyHistory();
+        loadDashboard();
+    } else {
+        showError(result.error);
+    }
+}
+
+async function loadPenaltyHistory() {
+    const result = await apiCall('admin_list_kid_penalties');
+    const el = document.getElementById('penalty-history-list');
+    if (!el) return;
+    if (!result.ok || !result.data.length) {
+        el.innerHTML = '<p style="color:#6B7280;">No penalties applied yet.</p>';
+        return;
+    }
+    el.innerHTML = result.data.map(p => `
+        <div class="list-item" style="border-left:4px solid #EF4444;">
+            <div class="list-item-info">
+                <h4>${p.kid_name} — ${p.title}</h4>
+                <p style="color:#EF4444;font-weight:600;">-${p.points_deducted} points</p>
+                ${p.note ? `<p><em>"${p.note}"</em></p>` : ''}
+                <p style="color:#9CA3AF;font-size:12px;">${formatDate(p.applied_at)}</p>
+            </div>
+            <div class="list-item-actions">
+                <span style="font-size:22px;">⚠️</span>
+            </div>
+        </div>
+    `).join('');
 }
 
 // Initialize

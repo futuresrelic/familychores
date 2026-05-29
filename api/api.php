@@ -896,10 +896,12 @@ case 'approve_submission':
         requireAdmin();
         $familyId = getAdminFamilyId();
         $status = $input['status'] ?? 'pending';
-        if (!in_array($status, ['pending', 'approved', 'rejected'])) $status = 'pending';
+        if (!in_array($status, ['pending', 'approved', 'rejected', 'revoked'])) $status = 'pending';
         $db = getDb();
         $stmt = $db->prepare("
-            SELECT s.*, u.kid_name, c.title as chore_title
+            SELECT s.id, s.kid_user_id, s.chore_id, s.status, s.note, s.points_awarded,
+                   s.submitted_at, s.reviewed_at, s.revoke_reason,
+                   u.kid_name, c.title as chore_title
             FROM submissions s
             JOIN users u ON s.kid_user_id = u.id
             JOIN chores c ON s.chore_id = c.id
@@ -2643,6 +2645,147 @@ case 'delete_user_avatar':
         echo json_encode(['ok' => true]);
         break;
     }
+
+case 'revoke_submission':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $submissionId = intval($input['submission_id'] ?? 0);
+    $reason = sanitize($input['reason'] ?? 'Points revoked by admin', 300);
+    if (!$submissionId) jsonResponse(false, null, 'Submission ID required');
+    $db = getDb();
+    $stmt = $db->prepare("
+        SELECT s.*, c.recurrence_type, c.default_points
+        FROM submissions s
+        JOIN chores c ON s.chore_id = c.id
+        JOIN users u ON s.kid_user_id = u.id
+        WHERE s.id = ? AND s.status = 'approved' AND u.family_id = ?
+    ");
+    $stmt->execute([$submissionId, $familyId]);
+    $sub = $stmt->fetch();
+    if (!$sub) jsonResponse(false, null, 'Approved submission not found');
+    $pts = intval($sub['points_awarded'] ?: $sub['default_points']);
+    // Deduct points (floor at 0)
+    $db->prepare("UPDATE users SET total_points = MAX(0, total_points - ?) WHERE id = ?")->execute([$pts, $sub['kid_user_id']]);
+    // Mark revoked
+    $db->prepare("UPDATE submissions SET status = 'revoked', revoke_reason = ?, reviewed_at = datetime('now') WHERE id = ?")->execute([$reason, $submissionId]);
+    // Restore chore availability
+    if ($sub['recurrence_type'] === 'once') {
+        // Was deleted from kid_chores on approval — re-insert
+        $existing = $db->prepare("SELECT id FROM kid_chores WHERE kid_user_id = ? AND chore_id = ?");
+        $existing->execute([$sub['kid_user_id'], $sub['chore_id']]);
+        if (!$existing->fetch()) {
+            $db->prepare("INSERT INTO kid_chores (kid_user_id, chore_id, next_due_at) VALUES (?, ?, datetime('now'))")->execute([$sub['kid_user_id'], $sub['chore_id']]);
+        }
+    } else {
+        // Reset next_due_at so chore is immediately available again
+        $db->prepare("UPDATE kid_chores SET next_due_at = datetime('now') WHERE kid_user_id = ? AND chore_id = ?")->execute([$sub['kid_user_id'], $sub['chore_id']]);
+    }
+    logAudit($_SESSION['admin_id'], 'revoke_submission', ['submission_id' => $submissionId, 'reason' => $reason, 'pts_deducted' => $pts]);
+    jsonResponse(true, ['message' => 'Submission revoked', 'points_deducted' => $pts]);
+    break;
+
+case 'list_penalties':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $db = getDb();
+    $stmt = $db->prepare("SELECT * FROM penalties WHERE family_id = ? ORDER BY is_active DESC, points_cost DESC");
+    $stmt->execute([$familyId]);
+    jsonResponse(true, $stmt->fetchAll());
+    break;
+
+case 'create_penalty':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $title = sanitize($input['title'] ?? '', 100);
+    $description = sanitize($input['description'] ?? '', 300);
+    $points = intval($input['points_cost'] ?? 0);
+    if (!$title || $points <= 0) jsonResponse(false, null, 'Title and positive points required');
+    $db = getDb();
+    $stmt = $db->prepare("INSERT INTO penalties (family_id, title, description, points_cost, created_by) VALUES (?,?,?,?,?)");
+    $stmt->execute([$familyId, $title, $description, $points, $_SESSION['admin_id']]);
+    jsonResponse(true, ['id' => $db->lastInsertId()]);
+    break;
+
+case 'toggle_penalty':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $penaltyId = intval($input['penalty_id'] ?? 0);
+    $db = getDb();
+    $db->prepare("UPDATE penalties SET is_active = 1 - is_active WHERE id = ? AND family_id = ?")->execute([$penaltyId, $familyId]);
+    jsonResponse(true, ['message' => 'Toggled']);
+    break;
+
+case 'delete_penalty':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $penaltyId = intval($input['penalty_id'] ?? 0);
+    $db = getDb();
+    $db->prepare("DELETE FROM penalties WHERE id = ? AND family_id = ?")->execute([$penaltyId, $familyId]);
+    jsonResponse(true, ['message' => 'Deleted']);
+    break;
+
+case 'apply_penalty':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $kidId = intval($input['kid_id'] ?? 0);
+    $penaltyId = intval($input['penalty_id'] ?? 0) ?: null;
+    $customTitle = sanitize($input['custom_title'] ?? '', 100);
+    $customPts = intval($input['custom_points'] ?? 0);
+    $note = sanitize($input['note'] ?? '', 300);
+    if (!$kidId) jsonResponse(false, null, 'Kid required');
+    $db = getDb();
+    // Verify kid belongs to family
+    $kidRow = $db->prepare("SELECT id, kid_name FROM users WHERE id = ? AND role = 'kid' AND family_id = ?");
+    $kidRow->execute([$kidId, $familyId]);
+    if (!$kidRow->fetch()) jsonResponse(false, null, 'Kid not found');
+    // Resolve title + points from penalty rule OR custom
+    $title = $customTitle;
+    $pts = $customPts;
+    if ($penaltyId) {
+        $pRow = $db->prepare("SELECT title, points_cost FROM penalties WHERE id = ? AND family_id = ?");
+        $pRow->execute([$penaltyId, $familyId]);
+        $p = $pRow->fetch();
+        if ($p) { $title = $p['title']; $pts = intval($p['points_cost']); }
+    }
+    if (!$title || $pts <= 0) jsonResponse(false, null, 'Title and positive points required');
+    // Deduct points (floor at 0)
+    $db->prepare("UPDATE users SET total_points = MAX(0, total_points - ?) WHERE id = ?")->execute([$pts, $kidId]);
+    // Log penalty
+    $db->prepare("INSERT INTO kid_penalties (kid_user_id, penalty_id, title, points_deducted, applied_by, note) VALUES (?,?,?,?,?,?)")->execute([$kidId, $penaltyId, $title, $pts, $_SESSION['admin_id'], $note]);
+    logAudit($_SESSION['admin_id'], 'apply_penalty', ['kid_id' => $kidId, 'title' => $title, 'pts' => $pts]);
+    jsonResponse(true, ['message' => 'Penalty applied', 'points_deducted' => $pts]);
+    break;
+
+case 'admin_list_kid_penalties':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $db = getDb();
+    $stmt = $db->prepare("
+        SELECT kp.*, u.kid_name, a.kid_name as applied_by_name
+        FROM kid_penalties kp
+        JOIN users u ON kp.kid_user_id = u.id
+        LEFT JOIN users a ON kp.applied_by = a.id
+        WHERE u.family_id = ?
+        ORDER BY kp.applied_at DESC
+        LIMIT 100
+    ");
+    $stmt->execute([$familyId]);
+    jsonResponse(true, $stmt->fetchAll());
+    break;
+
+case 'kid_list_penalties':
+    $kid = requireKid();
+    $db = getDb();
+    $stmt = $db->prepare("
+        SELECT kp.title, kp.points_deducted, kp.note, kp.applied_at
+        FROM kid_penalties kp
+        WHERE kp.kid_user_id = ?
+        ORDER BY kp.applied_at DESC
+        LIMIT 50
+    ");
+    $stmt->execute([$kid['kid_user_id']]);
+    jsonResponse(true, $stmt->fetchAll());
+    break;
 
 default:
             jsonResponse(false, null, 'Invalid action');
