@@ -789,13 +789,27 @@ case 'list_kid_chores':
             jsonResponse(false, null, 'Chore not assigned to you');
         }
         
-        $stmt = $db->prepare("
-            SELECT id FROM submissions 
-            WHERE kid_user_id = ? AND chore_id = ? AND status = 'pending'
+        // Only block if there's already a pending submission for the CURRENT period
+        switch ($kidChore['recurrence_type']) {
+            case 'daily':
+                $periodClause = "AND DATE(submitted_at) = DATE('now', 'localtime')";
+                break;
+            case 'weekly':
+                $periodClause = "AND submitted_at >= datetime('now', '-7 days')";
+                break;
+            case 'monthly':
+                $periodClause = "AND strftime('%Y-%m', submitted_at) = strftime('%Y-%m', 'now')";
+                break;
+            default:
+                $periodClause = ''; // 'once' chores: any pending blocks
+        }
+        $dupCheck = $db->prepare("
+            SELECT id FROM submissions
+            WHERE kid_user_id = ? AND chore_id = ? AND status = 'pending' $periodClause
         ");
-        $stmt->execute([$kid['kid_user_id'], $choreId]);
-        if ($stmt->fetch()) {
-            jsonResponse(false, null, 'Submission already pending');
+        $dupCheck->execute([$kid['kid_user_id'], $choreId]);
+        if ($dupCheck->fetch()) {
+            jsonResponse(false, null, 'Already submitted for this period');
         }
         
         $status = $kidChore['requires_approval'] ? 'pending' : 'approved';
@@ -977,7 +991,86 @@ case 'approve_submission':
         
         jsonResponse(true, ['message' => 'Submission reviewed']);
         break;
-    
+
+case 'bulk_approve_submissions':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $db = getDb();
+    // Get all pending submissions for this family
+    $stmt = $db->prepare("
+        SELECT s.id, s.kid_user_id, s.chore_id, s.points_awarded,
+               c.default_points, c.recurrence_type
+        FROM submissions s
+        JOIN chores c ON s.chore_id = c.id
+        JOIN users u ON s.kid_user_id = u.id
+        WHERE s.status = 'pending' AND u.family_id = ?
+        ORDER BY s.submitted_at ASC
+    ");
+    $stmt->execute([$familyId]);
+    $subs = $stmt->fetchAll();
+    if (!$subs) jsonResponse(true, ['approved' => 0]);
+    $approved = 0;
+    foreach ($subs as $sub) {
+        $pts = $sub['points_awarded'] ?: $sub['default_points'];
+        $db->prepare("UPDATE submissions SET status='approved', points_awarded=?, reviewed_at=datetime('now'), reviewer_id=? WHERE id=?")->execute([$pts, $_SESSION['admin_id'], $sub['id']]);
+        $db->prepare("UPDATE users SET total_points = total_points + ? WHERE id=?")->execute([$pts, $sub['kid_user_id']]);
+        if ($sub['recurrence_type'] !== 'once') {
+            $nextDue = calculateNextDueAfterCompletion($sub['recurrence_type']);
+            $db->prepare("UPDATE kid_chores SET next_due_at=?, streak_count=streak_count+1, last_completed_at=datetime('now') WHERE kid_user_id=? AND chore_id=?")->execute([$nextDue, $sub['kid_user_id'], $sub['chore_id']]);
+        }
+        logAudit($_SESSION['admin_id'], 'bulk_approve', ['submission_id' => $sub['id']]);
+        $approved++;
+    }
+    jsonResponse(true, ['approved' => $approved]);
+    break;
+
+case 'bulk_approve_quest_tasks':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $db = getDb();
+    $stmt = $db->prepare("
+        SELECT kqts.id, kqts.kid_user_id, qt.points
+        FROM kid_quest_task_status kqts
+        JOIN quest_tasks qt ON kqts.task_id = qt.id
+        JOIN quests q ON qt.quest_id = q.id
+        JOIN users u ON kqts.kid_user_id = u.id
+        WHERE kqts.status = 'pending' AND u.family_id = ?
+    ");
+    $stmt->execute([$familyId]);
+    $tasks = $stmt->fetchAll();
+    if (!$tasks) jsonResponse(true, ['approved' => 0]);
+    $approved = 0;
+    foreach ($tasks as $task) {
+        $db->prepare("UPDATE kid_quest_task_status SET status='approved', reviewed_at=datetime('now'), reviewer_id=? WHERE id=?")->execute([$_SESSION['admin_id'], $task['id']]);
+        $db->prepare("UPDATE users SET total_points = total_points + ? WHERE id=?")->execute([$task['points'], $task['kid_user_id']]);
+        logAudit($_SESSION['admin_id'], 'bulk_approve_quest_task', ['status_id' => $task['id']]);
+        $approved++;
+    }
+    jsonResponse(true, ['approved' => $approved]);
+    break;
+
+case 'bulk_approve_redemptions':
+    requireAdmin();
+    $familyId = getAdminFamilyId();
+    $db = getDb();
+    $stmt = $db->prepare("
+        SELECT r.id
+        FROM redemptions r
+        JOIN users u ON r.kid_user_id = u.id
+        WHERE r.status = 'pending' AND u.family_id = ?
+    ");
+    $stmt->execute([$familyId]);
+    $reds = $stmt->fetchAll();
+    if (!$reds) jsonResponse(true, ['approved' => 0]);
+    $approved = 0;
+    foreach ($reds as $red) {
+        $db->prepare("UPDATE redemptions SET status='approved', resolved_at=datetime('now'), reviewer_id=? WHERE id=?")->execute([$_SESSION['admin_id'], $red['id']]);
+        logAudit($_SESSION['admin_id'], 'bulk_approve_redemption', ['redemption_id' => $red['id']]);
+        $approved++;
+    }
+    jsonResponse(true, ['approved' => $approved]);
+    break;
+
     case 'create_quest':
         requireAdmin();
         
@@ -1876,7 +1969,7 @@ case 'kid_feed':
     
     $db = getDb();
     $stmt = $db->prepare("
-        SELECT kc.*, c.title, c.description, c.default_points, c.requires_approval,
+        SELECT kc.*, c.title, c.description, c.default_points, c.requires_approval, c.recurrence_type,
                CASE WHEN datetime(kc.next_due_at) <= datetime('now') THEN 1 ELSE 0 END as is_due
         FROM kid_chores kc
         JOIN chores c ON kc.chore_id = c.id

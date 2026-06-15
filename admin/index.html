@@ -257,11 +257,12 @@
             <!-- Submissions Tab -->
             <section id="tab-submissions" class="tab-content">
                 <h2>Submissions for Review</h2>
-                <div class="filters">
+                <div class="filters" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     <button class="filter-btn active" data-status="pending">Pending</button>
                     <button class="filter-btn" data-status="approved">Approved</button>
                     <button class="filter-btn" data-status="rejected">Rejected</button>
                     <button class="filter-btn" data-status="revoked">🚫 Revoked</button>
+                    <button class="success-btn small-btn" id="approve-all-submissions-btn" onclick="approveAllSubmissions()" style="margin-left:auto;">✅ Approve All Pending</button>
                 </div>
                 <div id="submissions-list" class="list-container"></div>
             </section>
@@ -319,10 +320,11 @@
             <section id="tab-quest-tasks" class="tab-content">
                 <div class="tab-header">
                     <h2>Quest Task Submissions</h2>
-                    <div class="filter-buttons">
+                    <div class="filter-buttons" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         <button class="filter-btn filter-btn-quest-task active" data-status="pending">Pending</button>
                         <button class="filter-btn filter-btn-quest-task" data-status="approved">Approved</button>
                         <button class="filter-btn filter-btn-quest-task" data-status="rejected">Rejected</button>
+                        <button class="success-btn small-btn" onclick="approveAllQuestTasks()" style="margin-left:auto;">✅ Approve All Pending</button>
                     </div>
                 </div>
                 <div id="quest-tasks-list" class="list-container">
@@ -349,10 +351,11 @@
             <!-- Redemptions Tab -->
             <section id="tab-redemptions" class="tab-content">
                <h2>Reward Redemptions</h2>
-                <div class="filters">
+                <div class="filters" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     <button class="filter-btn-redemption active" data-status="pending">Pending</button>
                    <button class="filter-btn-redemption" data-status="approved">Approved</button>
                    <button class="filter-btn-redemption" data-status="rejected">Rejected</button>
+                   <button class="success-btn small-btn" onclick="approveAllRedemptions()" style="margin-left:auto;">✅ Approve All Pending</button>
                </div>
                <div id="redemptions-list" class="list-container"></div>
             </section>

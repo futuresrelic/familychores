@@ -301,6 +301,24 @@ async function loadKidPenalties() {
     `).join('');
 }
 
+function isSubmissionCurrentPeriod(submission, chore) {
+    if (!submission || submission.status !== 'pending') return false;
+    const sub = new Date(submission.submitted_at);
+    const now = new Date();
+    switch (chore.recurrence_type) {
+        case 'daily':
+            return sub.toDateString() === now.toDateString();
+        case 'weekly': {
+            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            return sub >= weekAgo;
+        }
+        case 'monthly':
+            return sub.getMonth() === now.getMonth() && sub.getFullYear() === now.getFullYear();
+        default:
+            return true; // 'once' always blocks
+    }
+}
+
 function renderChores(chores, submissions = []) {
     if (!chores || chores.length === 0) {
         document.getElementById('chores-list').innerHTML = `
@@ -327,7 +345,7 @@ function renderChores(chores, submissions = []) {
             .filter(s => s.chore_id === chore.chore_id)
             .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))[0];
         
-        const isPending = recentSubmission && recentSubmission.status === 'pending';
+        const isPending = isSubmissionCurrentPeriod(recentSubmission, chore);
         const isApproved = recentSubmission && recentSubmission.status === 'approved' && !isDueNow;
         
         let buttonText, buttonClass, buttonDisabled, statusBadge;

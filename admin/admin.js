@@ -870,21 +870,57 @@ async function revokeSubmission(submissionId, kidName, pointsAwarded) {
     }
 }
 
-async function reviewSubmission(submissionId, status, choreId = null) {
-    let pointsOverride = null;
-    if (status === 'approved') {
-        const points = prompt('Points to award (leave empty for default):');
-        if (points !== null && points !== '') {
-            pointsOverride = parseInt(points);
+async function approveAllSubmissions() {
+    const result = await apiCall('bulk_approve_submissions');
+    if (result.ok) {
+        if (result.data.approved === 0) {
+            showSuccess('No pending submissions to approve');
+        } else {
+            showSuccess(`✅ Approved ${result.data.approved} submission${result.data.approved !== 1 ? 's' : ''}!`);
         }
+        loadSubmissions(currentSubmissionsStatus);
+        loadDashboard();
+    } else {
+        showError(result.error);
     }
-    
+}
+
+async function approveAllQuestTasks() {
+    const result = await apiCall('bulk_approve_quest_tasks');
+    if (result.ok) {
+        if (result.data.approved === 0) {
+            showSuccess('No pending quest tasks to approve');
+        } else {
+            showSuccess(`✅ Approved ${result.data.approved} quest task${result.data.approved !== 1 ? 's' : ''}!`);
+        }
+        loadQuestTaskSubmissions(currentQuestTaskStatus);
+        loadDashboard();
+    } else {
+        showError(result.error);
+    }
+}
+
+async function approveAllRedemptions() {
+    const result = await apiCall('bulk_approve_redemptions');
+    if (result.ok) {
+        if (result.data.approved === 0) {
+            showSuccess('No pending redemptions to approve');
+        } else {
+            showSuccess(`✅ Approved ${result.data.approved} redemption${result.data.approved !== 1 ? 's' : ''}!`);
+        }
+        loadRedemptions(currentRedemptionsStatus);
+        loadDashboard();
+    } else {
+        showError(result.error);
+    }
+}
+
+async function reviewSubmission(submissionId, status, choreId = null) {
     const result = await apiCall('review_submission', {
         submission_id: submissionId,
         status,
-        points_override: pointsOverride
+        points_override: null
     });
-    
     if (result.ok) {
         showSuccess(`Submission ${status}`);
         loadSubmissions(currentSubmissionsStatus);
@@ -1102,8 +1138,6 @@ async function loadQuestTaskSubmissions(status) {
 }
 
 async function reviewQuestTask(statusId, status) {
-    if (!confirm(`${status === 'approved' ? 'Approve' : 'Reject'} this quest task?`)) return;
-    
     const result = await apiCall('review_quest_task', {
         status_id: statusId,
         status: status
@@ -2079,8 +2113,6 @@ async function loadRedemptions(status) {
 }
 
 async function reviewRedemption(redemptionId, status) {
-    if (!confirm(`${status === 'approved' ? 'Approve' : 'Reject'} this redemption?`)) return;
-    
     const result = await apiCall('review_redemption', {
         redemption_id: redemptionId,
         status
